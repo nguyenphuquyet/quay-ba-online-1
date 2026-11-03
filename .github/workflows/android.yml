@@ -69,10 +69,12 @@ jobs:
         run: |
           set -euo pipefail
           GODOT_DIR="$RUNNER_TEMP/godot"
-          TEMPLATE_DIR="$HOME/.config/godot/export_templates/${GODOT_VERSION}.stable"
+          # On Linux, Godot reads templates from the XDG data dir (not ~/.config).
+          TEMPLATE_DIR="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          LEGACY_TEMPLATE_DIR="$HOME/.config/godot/export_templates/${GODOT_VERSION}.stable"
           BASE_URL="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
 
-          mkdir -p "$GODOT_DIR" "$TEMPLATE_DIR"
+          mkdir -p "$GODOT_DIR" "$TEMPLATE_DIR" "$LEGACY_TEMPLATE_DIR"
 
           curl -L --fail --retry 3 --retry-delay 2 \
             -o "$GODOT_DIR/godot.zip" \
@@ -85,6 +87,9 @@ jobs:
             "$BASE_URL/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
           unzip -q "$GODOT_DIR/templates.tpz" -d "$GODOT_DIR/templates"
           cp -R "$GODOT_DIR/templates/templates/." "$TEMPLATE_DIR/"
+          cp -R "$GODOT_DIR/templates/templates/." "$LEGACY_TEMPLATE_DIR/"
+          test -f "$TEMPLATE_DIR/android_release.apk"
+          ls -la "$TEMPLATE_DIR" | head -n 20
 
           echo "GODOT_BIN=$GODOT_DIR/Godot_v${GODOT_VERSION}-stable_linux.x86_64" >> "$GITHUB_ENV"
           "$GODOT_DIR/Godot_v${GODOT_VERSION}-stable_linux.x86_64" --version
