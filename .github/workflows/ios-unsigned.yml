@@ -1,0 +1,122 @@
+name: Build unsigned iOS IPA
+
+# Builds a *unsigned* iOS .ipa on a macOS runner.
+#
+# The IPA is not signed with an Apple certificate/profile, so it cannot be
+# installed on a normal (non-jailbroken) device as-is. It is useful as a build
+# artifact, for re-signing tools (Sideloadly, AltStore, TrollStore, ...) or for
+# jailbroken devices. Signing is intentionally disabled (`CODE_SIGNING_ALLOWED=NO`).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "game/**"
+      - ".github/workflows/ios-unsigned.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-ios:
+    name: Export and package unsigned IPA
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    env:
+      GODOT_VERSION: "4.7.2"
+      PROJECT_DIR: ${{ github.workspace }}/game
+      EXPORT_NAME: QuayBarOnline
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Godot and iOS export templates
+        run: |
+          set -euo pipefail
+          GODOT_DIR="$RUNNER_TEMP/godot"
+          TEMPLATE_DIR="$HOME/Library/Application Support/Godot/export_templates/${GODOT_VERSION}.stable"
+          BASE_URL="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+
+          mkdir -p "$GODOT_DIR" "$TEMPLATE_DIR"
+
+          curl -L --fail --retry 3 --retry-delay 2 \
+            -o "$GODOT_DIR/godot.zip" \
+            "$BASE_URL/Godot_v${GODOT_VERSION}-stable_macos.universal.zip"
+          unzip -q "$GODOT_DIR/godot.zip" -d "$GODOT_DIR"
+          chmod +x "$GODOT_DIR/Godot.app/Contents/MacOS/Godot"
+
+          curl -L --fail --retry 3 --retry-delay 2 \
+            -o "$GODOT_DIR/templates.tpz" \
+            "$BASE_URL/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          unzip -q "$GODOT_DIR/templates.tpz" -d "$GODOT_DIR/templates"
+          cp -R "$GODOT_DIR/templates/templates/." "$TEMPLATE_DIR/"
+
+          echo "GODOT_BIN=$GODOT_DIR/Godot.app/Contents/MacOS/Godot" >> "$GITHUB_ENV"
+          "$GODOT_DIR/Godot.app/Contents/MacOS/Godot" --version
+
+      - name: Import project resources
+        run: |
+          set -euo pipefail
+          "$GODOT_BIN" --headless --path "$PROJECT_DIR" --import
+
+      - name: Export Xcode project
+        run: |
+          set -euo pipefail
+          mkdir -p "$PROJECT_DIR/build/ios"
+          "$GODOT_BIN" --headless --path "$PROJECT_DIR" \
+            --export-release "iOS" \
+            "$PROJECT_DIR/build/ios/${EXPORT_NAME}.xcodeproj"
+          ls -la "$PROJECT_DIR/build/ios"
+
+      - name: Build .app without code signing
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR/build/ios"
+
+          xcodebuild \
+            -project "${EXPORT_NAME}.xcodeproj" \
+            -scheme "${EXPORT_NAME}" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS="" \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            build
+
+          APP_PATH="DerivedData/Build/Products/Release-iphoneos/${EXPORT_NAME}.app"
+          test -d "$APP_PATH"
+
+          # Remove quarantine/xattrs that can break zip round-trips.
+          xattr -cr "$APP_PATH" || true
+
+          mkdir -p package/Payload
+          cp -R "$APP_PATH" package/Payload/
+          cd package
+          zip -qry "${EXPORT_NAME}-unsigned.ipa" Payload
+
+          echo "Packaged: $PROJECT_DIR/build/ios/package/${EXPORT_NAME}-unsigned.ipa"
+          unzip -l "${EXPORT_NAME}-unsigned.ipa" | head -n 20
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: QuayBarOnline-unsigned-ipa
+          path: game/build/ios/package/QuayBarOnline-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Xcode project (for re-signing / debugging)
+        uses: actions/upload-artifact@v4
+        with:
+          name: QuayBarOnline-xcode-project
+          path: game/build/ios/QuayBarOnline.xcodeproj
+          if-no-files-found: warn
+          retention-days: 7

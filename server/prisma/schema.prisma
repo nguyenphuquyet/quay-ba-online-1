@@ -1,0 +1,205 @@
+// QUẨY BAR ONLINE — Prisma schema (MySQL 8)
+// Migrations: npx prisma migrate dev --name init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  MODERATOR
+  ADMIN
+}
+
+enum RoomStatus {
+  OPEN
+  CLOSED
+}
+
+enum MemberRole {
+  OWNER
+  MODERATOR
+  MEMBER
+}
+
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+  BLOCKED
+}
+
+enum ReportStatus {
+  OPEN
+  REVIEWED
+  CLOSED
+}
+
+enum GameServerStatus {
+  ONLINE
+  OFFLINE
+}
+
+model User {
+  id           String    @id @default(uuid()) @db.Char(36)
+  username     String    @unique @db.VarChar(24)
+  email        String    @unique @db.VarChar(191)
+  passwordHash String    @db.VarChar(255)
+  displayName  String    @db.VarChar(32)
+  avatarUrl    String?   @db.VarChar(500)
+  bio          String?   @db.VarChar(280)
+  role         Role      @default(USER)
+  bannedAt     DateTime?
+  lastSeenAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  sessions              Session[]
+  ownedRooms            Room[]       @relation("RoomOwner")
+  memberships           RoomMember[]
+  inventory             InventoryItem[]
+  reportsMade           Report[]     @relation("ReportsMade")
+  reportsReceived       Report[]     @relation("ReportsReceived")
+  friendRequestsSent    Friendship[] @relation("FriendRequester")
+  friendRequestsReceived Friendship[] @relation("FriendAddressee")
+  gameTickets           GameTicket[]
+
+  @@index([lastSeenAt])
+}
+
+model Session {
+  id             String    @id @default(uuid()) @db.Char(36)
+  userId         String    @db.Char(36)
+  refreshHash    String    @unique @db.Char(64)
+  replacedByHash String?   @db.Char(64)
+  userAgent      String?   @db.VarChar(255)
+  ipAddress      String?   @db.VarChar(64)
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+}
+
+model Room {
+  id             String     @id @default(uuid()) @db.Char(36)
+  code           String     @unique @db.VarChar(16)
+  name           String     @db.VarChar(60)
+  description    String     @db.VarChar(280)
+  map            String     @db.VarChar(48) @default("the_chrome_lotus")
+  maxPlayers     Int        @default(16)
+  isPublic       Boolean    @default(true)
+  passwordHash   String?    @db.VarChar(255)
+  status         RoomStatus @default(OPEN)
+  lightingPreset String     @db.VarChar(32) @default("party")
+  ownerId        String     @db.Char(36)
+  gameServerId   String?    @db.Char(36)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  owner       User         @relation("RoomOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members     RoomMember[]
+  gameServer  GameServer?  @relation(fields: [gameServerId], references: [id], onDelete: SetNull)
+  gameTickets GameTicket[]
+
+  @@index([status, isPublic])
+  @@index([ownerId])
+}
+
+model RoomMember {
+  id       String     @id @default(uuid()) @db.Char(36)
+  roomId   String     @db.Char(36)
+  userId   String     @db.Char(36)
+  role     MemberRole @default(MEMBER)
+  joinedAt DateTime   @default(now())
+  room     Room       @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+  @@index([userId])
+}
+
+model Friendship {
+  id          String           @id @default(uuid()) @db.Char(36)
+  requesterId String           @db.Char(36)
+  addresseeId String           @db.Char(36)
+  status      FriendshipStatus @default(PENDING)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  requester User @relation("FriendRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  addressee User @relation("FriendAddressee", fields: [addresseeId], references: [id], onDelete: Cascade)
+
+  @@unique([requesterId, addresseeId])
+  @@index([addresseeId, status])
+}
+
+model InventoryItem {
+  id         String   @id @default(uuid()) @db.Char(36)
+  userId     String   @db.Char(36)
+  itemKey    String   @db.VarChar(64)
+  itemType   String   @db.VarChar(32)
+  equipped   Boolean  @default(false)
+  metadata   Json?
+  acquiredAt DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, itemKey])
+  @@index([userId, itemType])
+}
+
+model Report {
+  id         String       @id @default(uuid()) @db.Char(36)
+  reporterId String       @db.Char(36)
+  targetId   String       @db.Char(36)
+  reason     String       @db.VarChar(48)
+  detail     String       @db.VarChar(500)
+  status     ReportStatus @default(OPEN)
+  reviewedAt DateTime?
+  createdAt  DateTime     @default(now())
+
+  reporter User @relation("ReportsMade", fields: [reporterId], references: [id], onDelete: Cascade)
+  target   User @relation("ReportsReceived", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([targetId])
+}
+
+model GameTicket {
+  id         String    @id @default(uuid()) @db.Char(36)
+  ticketHash String    @unique @db.Char(64)
+  userId     String    @db.Char(36)
+  roomId     String    @db.Char(36)
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@index([userId, roomId])
+}
+
+model GameServer {
+  id              String           @id @default(uuid()) @db.Char(36)
+  name            String           @db.VarChar(60)
+  host            String           @db.VarChar(191)
+  port            Int
+  region          String           @db.VarChar(32) @default("local")
+  capacity        Int              @default(32)
+  status          GameServerStatus @default(ONLINE)
+  lastHeartbeatAt DateTime         @default(now())
+  createdAt       DateTime         @default(now())
+
+  rooms Room[]
+
+  @@unique([host, port])
+  @@index([status, lastHeartbeatAt])
+}

@@ -1,0 +1,27 @@
+; Minimal project so the repository can be opened in Godot to try the demo.
+; Not included in Asset Library downloads (see .gitattributes).
+config_version=5
+
+[application]
+
+config/name="Game Menu Kit Lite (demo)"
+run/main_scene="res://addons/game_menu_kit/demo/demo.tscn"
+config/icon="res://icon.png"
+config/features=PackedStringArray("4.2", "GL Compatibility")
+
+[autoload]
+
+MenuKit="*res://addons/game_menu_kit/menu_kit.gd"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/game_menu_kit/plugin.cfg")
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"

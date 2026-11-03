@@ -1,0 +1,96 @@
+# QUẨY BAR ONLINE — local/staging stack
+# Chạy: docker compose up -d mysql redis server game-server heartbeat
+name: quay-bar-online
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_dev_password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-quaybaronline}
+      MYSQL_USER: ${MYSQL_USER:-qbo}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-qbo_dev_password}
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root_dev_password}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  server:
+    build:
+      context: ./server
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: mysql://${MYSQL_USER:-qbo}:${MYSQL_PASSWORD:-qbo_dev_password}@mysql:3306/${MYSQL_DATABASE:-quaybaronline}
+      AUTH_SECRET: ${AUTH_SECRET:-change-me-dev-secret-at-least-32-characters}
+      GAME_SERVER_SECRET: ${GAME_SERVER_SECRET:-change-me-game-server-secret}
+      GAME_SERVER_HOST: game-server
+      GAME_SERVER_PORT: "7000"
+      REDIS_URL: redis://redis:6379
+      ACCESS_TOKEN_TTL: "900"
+      REFRESH_TOKEN_TTL_DAYS: "30"
+    ports:
+      - "3000:3000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  game-server:
+    build:
+      context: .
+      dockerfile: multiplayer/Dockerfile
+    restart: unless-stopped
+    environment:
+      QBO_API_URL: http://server:3000
+      QBO_GAME_SECRET: ${GAME_SERVER_SECRET:-change-me-game-server-secret}
+      QBO_GAME_PORT: "7000"
+      QBO_ALLOW_UNVERIFIED_TICKETS: "0"
+    ports:
+      - "7000:7000/udp"
+    depends_on:
+      server:
+        condition: service_started
+
+  heartbeat:
+    image: node:22-alpine
+    restart: unless-stopped
+    working_dir: /app
+    command: ["node", "/app/heartbeat.mjs"]
+    environment:
+      QBO_API_URL: http://server:3000
+      GAME_SERVER_SECRET: ${GAME_SERVER_SECRET:-change-me-game-server-secret}
+      GAME_SERVER_HOST: game-server
+      GAME_SERVER_PORT: "7000"
+      HEARTBEAT_INTERVAL_MS: "30000"
+    volumes:
+      - ./multiplayer:/app:ro
+    depends_on:
+      server:
+        condition: service_started
+
+volumes:
+  mysql-data:
+  redis-data:
