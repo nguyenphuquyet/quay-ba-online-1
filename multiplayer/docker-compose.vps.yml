@@ -1,0 +1,46 @@
+# QUẨY BAR ONLINE — dedicated game server trên VPS
+#
+# Chỉ chạy Godot dedicated server + heartbeat. Backend Next.js vẫn ở Vercel,
+# database vẫn ở Aiven/MySQL. Nhờ vậy không phải chuyển dữ liệu người chơi.
+#
+# Cách dùng (trên VPS):
+#   cp multiplayer/.env.vps.example multiplayer/.env.vps
+#   # sửa PUBLIC_GAME_HOST + GAME_SERVER_SECRET
+#   docker compose -f multiplayer/docker-compose.vps.yml --env-file multiplayer/.env.vps up -d --build
+#
+# Mở firewall UDP:
+#   ufw allow 7000/udp
+name: quay-bar-online-vps
+
+services:
+  game-server:
+    build:
+      context: ..
+      dockerfile: multiplayer/Dockerfile
+    restart: unless-stopped
+    environment:
+      QBO_API_URL: ${QBO_API_URL}
+      QBO_GAME_SECRET: ${GAME_SERVER_SECRET}
+      QBO_GAME_PORT: "7000"
+      QBO_ALLOW_UNVERIFIED_TICKETS: "0"
+    ports:
+      - "7000:7000/udp"
+
+  heartbeat:
+    image: node:22-alpine
+    restart: unless-stopped
+    working_dir: /app
+    command: ["node", "/app/heartbeat.mjs"]
+    environment:
+      QBO_API_URL: ${QBO_API_URL}
+      GAME_SERVER_SECRET: ${GAME_SERVER_SECRET}
+      # Để trống -> heartbeat tự lấy IP công khai từ api.ipify.org.
+      GAME_SERVER_HOST: ${PUBLIC_GAME_HOST:-}
+      GAME_SERVER_PORT: "7000"
+      GAME_SERVER_NAME: ${GAME_SERVER_NAME:-The Chrome Lotus - VPS}
+      GAME_SERVER_REGION: ${GAME_SERVER_REGION:-sin}
+      HEARTBEAT_INTERVAL_MS: "30000"
+    volumes:
+      - ./heartbeat.mjs:/app/heartbeat.mjs:ro
+    depends_on:
+      - game-server

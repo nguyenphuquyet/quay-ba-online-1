@@ -45,7 +45,7 @@ services:
       DATABASE_URL: mysql://${MYSQL_USER:-qbo}:${MYSQL_PASSWORD:-qbo_dev_password}@mysql:3306/${MYSQL_DATABASE:-quaybaronline}
       AUTH_SECRET: ${AUTH_SECRET:-change-me-dev-secret-at-least-32-characters}
       GAME_SERVER_SECRET: ${GAME_SERVER_SECRET:-change-me-game-server-secret}
-      GAME_SERVER_HOST: game-server
+      GAME_SERVER_HOST: ${PUBLIC_GAME_HOST:-127.0.0.1}
       GAME_SERVER_PORT: "7000"
       REDIS_URL: redis://redis:6379
       ACCESS_TOKEN_TTL: "900"
@@ -82,8 +82,10 @@ services:
     environment:
       QBO_API_URL: http://server:3000
       GAME_SERVER_SECRET: ${GAME_SERVER_SECRET:-change-me-game-server-secret}
-      GAME_SERVER_HOST: game-server
+      GAME_SERVER_HOST: ${PUBLIC_GAME_HOST:-}
       GAME_SERVER_PORT: "7000"
+      GAME_SERVER_NAME: ${GAME_SERVER_NAME:-The Chrome Lotus - VPS}
+      GAME_SERVER_REGION: ${GAME_SERVER_REGION:-sin}
       HEARTBEAT_INTERVAL_MS: "30000"
     volumes:
       - ./multiplayer:/app:ro

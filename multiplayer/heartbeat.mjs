@@ -5,11 +5,32 @@
  */
 const apiUrl = (process.env.QBO_API_URL || "http://127.0.0.1:3000").replace(/\/$/, "");
 const secret = process.env.GAME_SERVER_SECRET || "";
-const host = process.env.GAME_SERVER_HOST || "127.0.0.1";
 const port = Number(process.env.GAME_SERVER_PORT || 7000);
 const interval = Number(process.env.HEARTBEAT_INTERVAL_MS || 30000);
-const name = process.env.GAME_SERVER_NAME || "The Chrome Lotus — dedicated";
+const name = process.env.GAME_SERVER_NAME || "The Chrome Lotus - dedicated";
 const region = process.env.GAME_SERVER_REGION || "local";
+
+/**
+ * IP mà CLIENT dùng để kết nối UDP. Trên VPS phải là IP công khai, KHÔNG phải
+ * hostname nội bộ Docker (`game-server`) — client ngoài Internet không phân
+ * giải được tên đó.
+ */
+async function resolveHost() {
+  const configured = (process.env.GAME_SERVER_HOST || "").trim();
+  if (configured) return configured;
+  try {
+    const response = await fetch("https://api.ipify.org");
+    if (response.ok) {
+      const ip = (await response.text()).trim();
+      if (ip) return ip;
+    }
+  } catch {
+    // Không có Internet ra ngoài — để backend tự suy ra từ request.
+  }
+  return "";
+}
+
+const host = await resolveHost();
 
 if (!secret) {
   console.error("[heartbeat] Thiếu GAME_SERVER_SECRET — dừng.");
@@ -38,6 +59,6 @@ async function beat() {
   }
 }
 
-console.log(`[heartbeat] ${apiUrl} ← ${name} (${host}:${port}) mỗi ${interval}ms`);
+console.log(`[heartbeat] ${apiUrl} ← ${name} (${host || "auto"}:${port}) mỗi ${interval}ms`);
 await beat();
 setInterval(beat, interval);

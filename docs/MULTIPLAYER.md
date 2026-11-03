@@ -98,6 +98,8 @@ Kiểm thử bằng máy thật khác:
 - Mở UDP `7000` (hoặc port cấu hình).
 - Đặt `QBO_GAME_SECRET`, `QBO_API_URL`, `QBO_GAME_PORT`.
 - Docker: `docker compose up -d game-server`; xem `multiplayer/README.md`.
+- VPS: `docker compose -f multiplayer/docker-compose.vps.yml --env-file multiplayer/.env.vps up -d --build`; xem `docs/DEPLOY_VPS.md`.
+- `GAME_SERVER_HOST` của heartbeat phải là IP công khai của VPS (không phải `game-server` nội bộ Docker).
 - Heartbeat lên backend (`POST /api/game/servers/heartbeat`) để backend chọn server khi cấp ticket.
 - Scale ngang: mỗi server instance một phòng (MVP). Registry hỗ trợ nhiều server; cần thêm logic chọn server theo tải cho production.
 
