@@ -23,6 +23,12 @@ COPY game ./game
 COPY multiplayer/start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
+# Import asset ngay trong image để container khởi động nhanh và không phụ thuộc
+# vào việc import lúc runtime. Chạy hai lượt: lượt đầu xây global class cache,
+# lượt sau import nốt các scene phụ thuộc class đó.
+RUN godot --headless --path /app/game --import >/dev/null 2>&1 || true \
+  && godot --headless --path /app/game --import >/dev/null 2>&1 || true
+
 ENV QBO_GAME_PORT=7000
 EXPOSE 7000/udp
 CMD ["/app/start.sh"]

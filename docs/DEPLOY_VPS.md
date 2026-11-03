@@ -70,6 +70,34 @@ sudo ufw status
 Nếu VPS dùng firewall của nhà cung cấp (Security Group / Firewall rule), mở
 thêm **UDP 3221** ở trang quản trị của họ.
 
+### AWS EC2 (security group)
+
+VPS AWS thường **chỉ mở TCP 22/80/443** theo mặc định, nên UDP vẫn bị chặn dù
+container đã listen. Vào:
+
+`EC2 → Instances → chọn instance → Security → Security groups → security group
+→ Edit inbound rules → Add rule`
+
+| Type | Protocol | Port range | Source |
+| --- | --- | --- | --- |
+| Custom UDP | UDP | `3221` | `0.0.0.0/0` |
+
+Lưu ý: rule **TCP** 3221 không dùng được — Godot ENet đi bằng UDP.
+
+Cách nhận biết UDP chưa thông: bộ đếm của rule DNAT trên VPS vẫn bằng 0 dù
+client đã gửi gói tin.
+
+```bash
+sudo nft list ruleset | grep -A1 3221   # packets 0 -> gói tin chưa vào tới máy
+```
+
+Kiểm tra nhanh handshake ENet từ máy khác:
+
+```bash
+godot --headless --path game --script res://tools/net_probe.gd -- serverbar1.nguyenphuquyet.online 3221
+# [PROBE] status=2 (OK)
+```
+
 ## 5. Chạy
 
 ```bash

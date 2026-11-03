@@ -103,6 +103,17 @@ Kiểm thử bằng máy thật khác:
 - Heartbeat lên backend (`POST /api/game/servers/heartbeat`) để backend chọn server khi cấp ticket.
 - Scale ngang: mỗi server instance một phòng (MVP). Registry hỗ trợ nhiều server; cần thêm logic chọn server theo tải cho production.
 
+### Kiểm tra nhanh server từ xa
+
+```bash
+# handshake ENet (không cần game ticket) — dùng khi nghi firewall chặn UDP
+godot --headless --path game --script res://tools/net_probe.gd -- <host> <port>
+# [PROBE] status=2 (OK)
+
+# muốn thử offline: dựng server ENet tối giản ở máy
+godot --headless --path game --script res://tools/net_echo_server.gd -- 7101
+```
+
 ## 9. Chưa làm
 
 - Voice chat WebRTC/SFU (dự kiến SFU + signaling qua backend; xem PROGRESS).
