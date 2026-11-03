@@ -833,11 +833,14 @@ static func youtube_embed_url(video_id: String) -> String:
 func play_youtube(url_input: String, title := "") -> Dictionary:
 	## Phát một video YouTube bằng iframe nhúng chính thức. Người chơi chỉ cần
 	## dán link, không phải thao tác trên cả trang web.
+	##
+	## Trạng thái TV là tài sản chung của phòng: luôn gửi lên server kể cả khi
+	## thiết bị đang thao tác không nhúng được trình duyệt (điện thoại). Nếu
+	## không, người dùng mobile bấm "Phát" sẽ không ai trong phòng nhận được.
 	var video_id := QBOUrlGuard.youtube_video_id(url_input)
 	if video_id == "":
 		return {"ok": false, "reason": "Link YouTube không hợp lệ. Dán link dạng youtube.com/watch?v=… hoặc youtu.be/…"}
-	if not _can_render_web():
-		return {"ok": false, "reason": "Máy này chưa có trình duyệt nhúng để phát video."}
+	var can_render := _can_render_web()
 	var watch_url := "https://www.youtube.com/watch?v=" + video_id
 	var state := {
 		"url": watch_url,
@@ -848,14 +851,16 @@ func play_youtube(url_input: String, title := "") -> Dictionary:
 		"volume": float(current_state.get("volume", 1.0)),
 		"kind": "youtube",
 		"video_id": video_id,
-		"status": "Đang phát video YouTube (nhúng).",
-		"provider": "Sẵn sàng — %s" % web_backend_name(),
+		"status": "Đang phát video YouTube (nhúng)." if can_render else "Đã đồng bộ video YouTube cho cả phòng. Thiết bị này chưa có trình duyệt nhúng nên không hiển thị được.",
+		"provider": ("Sẵn sàng — %s" % web_backend_name()) if can_render else "Đã đồng bộ — thiết bị này không nhúng được",
 		"by": GameState.display_name(),
 		"updated_at": Time.get_unix_time_from_system(),
 	}
 	Net.send_tv(state)
+	current_state = state.duplicate(true)
+	apply_state(state)
 	return {
-		"ok": true, "state": state, "kind": "youtube", "embedded": true,
+		"ok": true, "state": state, "kind": "youtube", "embedded": can_render,
 		"video_id": video_id, "status": str(state["status"]),
 	}
 

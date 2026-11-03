@@ -760,8 +760,14 @@ func _rpc_peer(id: int, method: String, args: Array) -> void:
 			rpc_id(id, "cli_roster", args[0])
 		"cli_system_message":
 			rpc_id(id, "cli_system_message", args[0])
+		"cli_player_joined":
+			rpc_id(id, "cli_player_joined", args[0], args[1])
 		"cli_player_left":
 			rpc_id(id, "cli_player_left", args[0])
+		"cli_kicked":
+			rpc_id(id, "cli_kicked", args[0])
+		"cli_tv_input":
+			rpc_id(id, "cli_tv_input", args[0])
 		"cli_room_settings":
 			rpc_id(id, "cli_room_settings", args[0])
 		"cli_player_state":

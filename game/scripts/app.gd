@@ -1004,6 +1004,18 @@ func _run_net_smoke(target: String) -> void:
 	elif parts.size() == 1 and parts[0].is_valid_int():
 		port = int(parts[0])
 	print("[NET-SMOKE] kết nối tới %s:%d (ticket %s)" % [host, port, "dev" if ticket == "dev-ticket" else "thật"])
+	# Tuỳ chọn: --tv-url=https://… / --tv-youtube=<link> để kiểm tra đồng bộ TV.
+	var tv_url := ""
+	var tv_youtube := ""
+	for arg in AppConfig.launch_args:
+		if arg.begins_with("--tv-url="):
+			tv_url = arg.trim_prefix("--tv-url=")
+		elif arg.begins_with("--tv-youtube="):
+			tv_youtube = arg.trim_prefix("--tv-youtube=")
+	Net.tv_received.connect(func(state: Dictionary):
+		print("[NET-SMOKE] tv_received url=%s kind=%s" % [str(state.get("url", "")), str(state.get("kind", ""))]))
+	Net.player_joined.connect(func(id: int, _info: Dictionary):
+		print("[NET-SMOKE] player_joined id=%d" % id))
 	Net.join_failed.connect(func(reason: String): printerr("[NET-SMOKE] join_failed: " + reason))
 	_load_world({"code": "NETSMOKE", "name": "Net Smoke", "maxPlayers": 8}, false)
 	Net.connect_to_room(host, port, ticket)
@@ -1011,8 +1023,34 @@ func _run_net_smoke(target: String) -> void:
 	# nên chờ đủ lâu trước khi kết luận.
 	await get_tree().create_timer(12.0).timeout
 	var players_count := Net.players.size()
-	print("[NET-SMOKE] players=%d roster=%d local=%d owner=%d connected=%s" % [players_count, Net.roster.size(), Net.local_peer_id, Net.owner_id, str(Net.is_online())])
+	var scene_count := world.players.size() if world != null else 0
+	print("[NET-SMOKE] players=%d roster=%d scene=%d local=%d owner=%d connected=%s" % [players_count, Net.roster.size(), scene_count, Net.local_peer_id, Net.owner_id, str(Net.is_online())])
 	var ok := players_count >= 1 and Net.is_online()
+	# Mỗi người trong danh sách phòng phải có avatar trong scene, nếu không thì
+	# người vào sau sẽ không thấy ai (bug đồng bộ spawn).
+	if ok and scene_count != players_count:
+		ok = false
+		printerr("[NET-SMOKE] FAIL: scene có %d người nhưng phòng có %d" % [scene_count, players_count])
+	if ok and tv_youtube != "":
+		var res: Dictionary = world.tv.play_youtube(tv_youtube)
+		print("[NET-SMOKE] play_youtube ok=%s embedded=%s renderer=%s" % [
+			str(res.get("ok", false)), str(res.get("embedded", false)),
+			str(world.tv.web_available()),
+		])
+		await get_tree().create_timer(4.0).timeout
+		var vid := str(Net.tv_state.get("video_id", ""))
+		print("[NET-SMOKE] tv_video_id=%s" % vid)
+		if not bool(res.get("ok", false)) or vid == "":
+			ok = false
+			printerr("[NET-SMOKE] FAIL: video YouTube không được gửi lên phòng")
+	if ok and tv_url != "":
+		Net.send_tv({"url": tv_url, "title": "TV sync test", "playing": true, "kind": "web", "status": "Đồng bộ TV", "provider": "", "volume": 1.0, "position": 0.0, "updated_at": Time.get_unix_time_from_system()})
+		await get_tree().create_timer(3.0).timeout
+		var got := str(Net.tv_state.get("url", ""))
+		print("[NET-SMOKE] tv_state=%s" % got)
+		if got != tv_url:
+			ok = false
+			printerr("[NET-SMOKE] FAIL: TV không đồng bộ (nhận '%s')" % got)
 	if ok:
 		var player = world.local_player_ref()
 		if player != null:

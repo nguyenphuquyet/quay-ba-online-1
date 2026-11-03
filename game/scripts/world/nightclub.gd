@@ -996,6 +996,18 @@ func _connect_net() -> void:
 
 func _on_local_player_ready(info: Dictionary) -> void:
 	add_player(info, true)
+	# Người vào phòng sau nhận danh sách người chơi có sẵn trong `cli_welcome`
+	# chứ không nhận `cli_player_joined` cho từng người -> phải spawn hết ở đây,
+	# nếu không họ sẽ chỉ thấy chính mình.
+	_sync_remote_players()
+
+
+func _sync_remote_players() -> void:
+	var self_id := Net.local_peer_id
+	for id in Net.players.keys():
+		if int(id) == self_id:
+			continue
+		add_player(Net.players[id], false)
 
 
 func _on_player_joined(id: int, info: Dictionary) -> void:
