@@ -1,4 +1,4 @@
-# --- QUẨY BAR ONLINE ---
+﻿# --- QUáº¨Y BAR ONLINE ---
 # Godot
 game/.godot/
 game/.import/
@@ -37,3 +37,7 @@ redis-data/
 # OS
 .DS_Store
 Thumbs.db
+
+# Vercel CLI local state
+.vercel/
+.env.local
