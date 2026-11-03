@@ -1,0 +1,11 @@
+# Giảm ngữ cảnh build gửi lên Docker daemon (VPS ít RAM/disk).
+.git
+.github
+.vercel
+server
+docs
+tools
+game/export
+game/build
+game/.godot
+*.log

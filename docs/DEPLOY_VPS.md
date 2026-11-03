@@ -1,14 +1,14 @@
 # DEPLOY GAME SERVER LÊN VPS
 
 Mô hình đang dùng: **backend Next.js + MySQL ở nơi khác (Vercel/Aiven)**, còn
-**Godot dedicated server chạy trên VPS** và mở **UDP 7000**. Client xin ticket
+**Godot dedicated server chạy trên VPS** và mở **UDP 3221**. Client xin ticket
 từ backend, ticket trả về `game.host` / `game.port`, rồi client kết nối ENet
 thẳng tới VPS.
 
 ```
 Client ──HTTP──▶ Vercel (auth/room/ticket) ──▶ Aiven MySQL
    │
-   └──ENet UDP 7000──▶ VPS (Godot headless) ──HTTP verify ticket──▶ Vercel
+   └──ENet UDP 3221──▶ VPS (Godot headless) ──HTTP verify ticket──▶ Vercel
 ```
 
 ## 0. Cần có
@@ -19,7 +19,7 @@ Client ──HTTP──▶ Vercel (auth/room/ticket) ──▶ Aiven MySQL
   Environment Variables). Phải **giống hệt** `GAME_SERVER_SECRET` bên dưới.
 - Docker + Docker Compose trên VPS.
 
-> VPS không cần mở TCP 3000 hay cài MySQL. Chỉ cần **UDP 7000**.
+> VPS không cần mở TCP 3000 hay cài MySQL. Chỉ cần **UDP 3221**.
 
 ## 1. Cài Docker trên VPS
 
@@ -63,12 +63,12 @@ nano multiplayer/.env.vps
 ## 4. Mở firewall UDP
 
 ```bash
-sudo ufw allow 7000/udp
+sudo ufw allow 3221/udp
 sudo ufw status
 ```
 
 Nếu VPS dùng firewall của nhà cung cấp (Security Group / Firewall rule), mở
-thêm **UDP 7000** ở trang quản trị của họ.
+thêm **UDP 3221** ở trang quản trị của họ.
 
 ## 5. Chạy
 
@@ -86,8 +86,8 @@ docker compose -f multiplayer/docker-compose.vps.yml --env-file multiplayer/.env
 Log đúng:
 
 ```text
-[qbo] dedicated server starting on UDP 7000
-[heartbeat] ok server=... 203.0.113.10:7000
+[qbo] dedicated server starting on UDP 3221
+[heartbeat] ok server=... serverbar1.nguyenphuquyet.online:3221
 ```
 
 ## 6. Kiểm tra backend đã nhận server
@@ -116,7 +116,7 @@ Nên đặt thêm (fallback khi registry trống):
 
 ```text
 GAME_SERVER_HOST = 203.0.113.10
-GAME_SERVER_PORT = 7000
+GAME_SERVER_PORT = 3221
 ```
 
 Sau khi đổi env, redeploy Vercel.
@@ -139,7 +139,7 @@ docker compose -f multiplayer/docker-compose.vps.yml --env-file multiplayer/.env
 
 | Triệu chứng | Nguyên nhân | Xử lý |
 | --- | --- | --- |
-| Client kẹt ở "Đang vào phòng" | UDP 7000 bị chặn | Mở `ufw allow 7000/udp` + firewall của VPS |
+| Client kẹt ở "Đang vào phòng" | UDP 3221 bị chặn | Mở `ufw allow 3221/udp` + firewall của VPS |
 | `Game ticket không hợp lệ` | Secret VPS khác Vercel | Đặt lại `GAME_SERVER_SECRET` cho khớp rồi restart |
 | Ticket trả `127.0.0.1` | Heartbeat chết / host nội bộ Docker | Xem log heartbeat, đặt `PUBLIC_GAME_HOST=<IP VPS>` |
 | Heartbeat `HTTP 403` | `x-game-server-secret` sai | Kiểm tra lại secret trên Vercel |
@@ -153,3 +153,4 @@ docker compose -f multiplayer/docker-compose.vps.yml --env-file multiplayer/.env
 - Chưa có auto-scale. VPS 1 vCPU/1 GB đủ cho club nhỏ (~10–20 người), nhưng
   nên theo dõi CPU/RAM và băng thông UDP.
 - Không chạy `--allow-unverified-tickets` trên production.
+
