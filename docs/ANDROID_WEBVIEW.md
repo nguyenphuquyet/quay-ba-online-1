@@ -64,6 +64,7 @@ Sau đó export Android với `gradle_build/use_gradle_build=true` (đã bật t
 
 ## iOS
 
-iOS cần WKWebView trong một static library và `ios/plugins/*.gdip`, phải build
-bằng Xcode trên runner macOS. Hiện chưa có; trên iOS nút TV mở link bằng trình
-duyệt hệ thống (`OS.shell_open`).
+iOS dùng **GDExtension** (thư viện tĩnh `.a`) chứ không dùng Android plugin:
+xem `docs/IOS_WEBVIEW.md`. Trước đây bản iOS chỉ mở link bằng trình duyệt hệ
+thống (`OS.shell_open`); giờ đã có WKWebView nhúng, build tự động trong
+`.github/workflows/ios-unsigned.yml`.

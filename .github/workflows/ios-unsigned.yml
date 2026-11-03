@@ -72,6 +72,36 @@ jobs:
           set -euo pipefail
           "$GODOT_BIN" --headless --path "$PROJECT_DIR" --import
 
+      - name: Build native WKWebView plugin (GDExtension static library)
+        run: |
+          set -euo pipefail
+          SRC="$GITHUB_WORKSPACE/ios-plugin/src"
+          OUT_DIR="$PROJECT_DIR/addons/qbo_webview_ios/bin"
+          mkdir -p "$OUT_DIR"
+          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          OBJ="$RUNNER_TEMP/qbo_webview_ios.o"
+          LIB="$OUT_DIR/libqbo_webview_ios.ios.template_release.arm64.a"
+
+          # WKWebView được autolink qua module import (@import WebKit) nên
+          # không cần sửa project.pbxproj của Godot.
+          xcrun --sdk iphoneos clang++ \
+            -arch arm64 \
+            -miphoneos-version-min=13.0 \
+            -isysroot "$SDK" \
+            -std=c++17 \
+            -fobjc-arc \
+            -fmodules -fcxx-modules \
+            -O2 \
+            -I "$SRC" \
+            -c "$SRC/qbo_webview_ios.mm" -o "$OBJ"
+
+          xcrun --sdk iphoneos libtool -static -o "$LIB" "$OBJ"
+          ls -la "$OUT_DIR"
+
+          # Entry point mà .gdextension khai báo phải có trong archive.
+          nm -g "$LIB" | grep -q "_qbo_webview_ios_init" \
+            || { echo "missing qbo_webview_ios_init in $LIB"; nm -g "$LIB" | head -n 40; exit 1; }
+
       - name: Export Xcode project
         run: |
           set -euo pipefail

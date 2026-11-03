@@ -1,0 +1,15 @@
+; Godot 4.7 GDExtension that registers `QBOWebViewIOS` (native WKWebView).
+;
+; The static library is not committed to git; the iOS CI job builds it from
+; `ios-plugin/src/` with `xcrun --sdk iphoneos clang++` and drops it here.
+; See docs/IOS_WEBVIEW.md.
+
+[configuration]
+
+entry_symbol = "qbo_webview_ios_init"
+compatibility_minimum = "4.7"
+reloadable = false
+
+[libraries]
+
+ios.release.arm64 = "res://addons/qbo_webview_ios/bin/libqbo_webview_ios.ios.template_release.arm64.a"

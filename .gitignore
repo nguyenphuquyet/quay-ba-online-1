@@ -12,6 +12,8 @@ game/build/
 game/android/build/
 # AAR WebView do CI build từ android-plugin/
 game/addons/qbo_webview_android/bin/*.aar
+# Thư viện WKWebView do CI build từ ios-plugin/
+game/addons/qbo_webview_ios/bin/*.a
 android-plugin/.gradle/
 android-plugin/build/
 android-plugin/plugin/build/
