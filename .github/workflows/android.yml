@@ -147,6 +147,29 @@ jobs:
         run: |
           "$GODOT_BIN" --headless --path game --import || true
 
+      - name: Build native WebView plugin AAR
+        run: |
+          set -euo pipefail
+          pushd android-plugin
+          # Dùng wrapper do runner sinh ra để ghim đúng phiên bản Gradle cho AGP.
+          gradle wrapper --gradle-version 8.11.1 --distribution-type bin
+          ./gradlew --no-daemon :plugin:assembleRelease
+          popd
+          mkdir -p game/addons/qbo_webview_android/bin
+          cp android-plugin/plugin/build/outputs/aar/plugin-release.aar \
+            game/addons/qbo_webview_android/bin/QBOWebViewAndroid-release.aar
+          ls -la game/addons/qbo_webview_android/bin
+
+      - name: Install Android build template
+        run: |
+          set -euo pipefail
+          "$GODOT_BIN" --headless --path game --install-android-build-template
+          test -f game/android/build/build.gradle
+          test -f game/android/build/AndroidManifest.xml
+          # Plugin export của game phải được bật để AAR đi vào bản build.
+          grep -n "editor_plugins" game/project.godot || true
+          ls -la game/android/build | head -n 20
+
       - name: Export Android release APK
         run: |
           set -uo pipefail

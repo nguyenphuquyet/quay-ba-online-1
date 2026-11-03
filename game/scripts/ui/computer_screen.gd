@@ -697,6 +697,9 @@ func _publish_tv() -> void:
 	var result: Dictionary = App.world.tv.play_youtube(url)
 	if bool(result.get("ok", false)):
 		ui.call("toast", str(result.get("status", "Đang phát video trên TV.")), "success")
+		# Thiết bị có WebView native (mobile) mở luôn video để người bấm thấy kết quả.
+		if App.world.tv.native_player_available():
+			App.world.tv.open_native_player()
 	else:
 		ui.call("toast", str(result.get("reason", "Không phát được video.")), "error")
 	_refresh_tv_state()

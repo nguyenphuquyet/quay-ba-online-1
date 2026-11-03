@@ -175,6 +175,7 @@ func _build_quick_menu() -> void:
 	box.add_child(title)
 	for entry in [
 		{"text": "Người chơi", "callable": _toggle_player_panel},
+		{"text": "TV sân khấu", "callable": _open_stage_tv},
 		{"text": "DJ", "callable": func(): App.open_dj_panel()},
 		{"text": "Ánh sáng", "callable": func(): App.open_lighting_panel()},
 		{"text": "Menu", "callable": _toggle_menu},
@@ -188,6 +189,15 @@ func _build_quick_menu() -> void:
 			action.call()
 		)
 		box.add_child(button)
+
+
+func _open_stage_tv() -> void:
+	## Mobile: mở WebView native đúng video cả phòng đang xem. Desktop: mở bảng
+	## điều khiển TV (màn web đã render sẵn trong club).
+	var tv = App.world.tv if App.world != null else null
+	if tv != null and tv.native_player_available() and tv.open_native_player():
+		return
+	App.open_computer("tv")
 
 
 func _toggle_quick_menu() -> void:

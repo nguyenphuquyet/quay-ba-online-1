@@ -8,6 +8,17 @@ game/export/builds/
 game/build/
 *.translation
 
+# Android build template (sinh bởi --install-android-build-template)
+game/android/build/
+# AAR WebView do CI build từ android-plugin/
+game/addons/qbo_webview_android/bin/*.aar
+android-plugin/.gradle/
+android-plugin/build/
+android-plugin/plugin/build/
+android-plugin/gradle/
+android-plugin/gradlew
+android-plugin/gradlew.bat
+
 # Local dev tooling (downloaded editor binaries, not sources)
 tools/godot/*.exe
 tools/godot/*.zip

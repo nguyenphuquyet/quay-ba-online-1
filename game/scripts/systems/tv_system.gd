@@ -496,6 +496,52 @@ func web_backend_name() -> String:
 	return ""
 
 
+# ------------------------------------------------------------------ native WebView (mobile)
+## Trên Android/iOS không thể render web vào texture, nhưng có WebView native.
+## Lớp phủ đó mở đúng video đang phát trong phòng (kèm mốc thời gian để gần
+## khớp với người khác).
+
+func native_player_available() -> bool:
+	return provider != null and provider.is_embedded_supported()
+
+
+func native_player_url() -> String:
+	if current_state.is_empty():
+		return ""
+	var kind := str(current_state.get("kind", "web"))
+	if kind == "youtube":
+		var video_id := str(current_state.get("video_id", ""))
+		if video_id == "":
+			return ""
+		var elapsed := 0
+		var updated := float(current_state.get("updated_at", 0.0))
+		if updated > 0.0:
+			elapsed = int(maxf(0.0, Time.get_unix_time_from_system() - updated))
+		var url := "https://www.youtube.com/embed/%s?autoplay=1&playsinline=1&rel=0&modestbranding=1&origin=https%%3A%%2F%%2Fwww.youtube.com" % video_id
+		if elapsed > 3:
+			url += "&start=%d" % elapsed
+		return url
+	var url := str(current_state.get("url", ""))
+	if url.begins_with("http://") or url.begins_with("https://"):
+		return url
+	return ""
+
+
+func open_native_player() -> bool:
+	if not native_player_available():
+		return false
+	var url := native_player_url()
+	if url == "":
+		return false
+	return provider.open(url)
+
+
+func close_native_player() -> void:
+	if provider != null:
+		provider.close()
+
+
+
 func _show_web(url: String, title: String) -> void:
 	if video.visible:
 		video.stop()
