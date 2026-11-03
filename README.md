@@ -31,7 +31,7 @@ godot --path game --editor
 godot --path game
 ```
 
-Trong menu chọn **Chơi solo / offline** để vào club ngay mà không cần backend, hoặc đăng nhập để tạo/tham gia phòng online.
+Trong menu chọn **Chơi solo / offline** để vào club ngay mà không cần backend, hoặc đăng nhập để tạo/tham gia phòng online. Client mặc định gọi backend production `https://quay-bar-online-server.vercel.app`; muốn dùng backend local thì chạy `godot --path game -- --api=http://127.0.0.1:3000` (hoặc đặt biến môi trường `QBO_API_URL`).
 
 ### 2. Backend
 

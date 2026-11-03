@@ -134,7 +134,7 @@ Workflow sẽ pull env từ Vercel, build prebuilt, deploy production và gọi 
 
 ## 7. Trỏ game client vào backend đã deploy
 
-Client Godot đọc theo thứ tự: biến môi trường → tham số dòng lệnh → mặc định `http://127.0.0.1:3000`.
+Client Godot đọc theo thứ tự: biến môi trường → tham số dòng lệnh → mặc định `https://quay-bar-online-server.vercel.app` (đã đổi trong `game/scripts/autoload/app_config.gd`).
 
 ```bash
 # Windows (PowerShell)
@@ -143,9 +143,10 @@ $env:QBO_API_URL="https://<project>.vercel.app"
 
 # hoặc tham số dòng lệnh
 QuayBarOnline.exe --api=https://<project>.vercel.app
-```
 
-Với bản build phát hành, nên sửa `DEFAULT_API_URL` trong `game/scripts/autoload/app_config.gd` thành domain Vercel (hoặc truyền `--api=` trong shortcut/launcher).
+# chạy backend local
+QuayBarOnline.exe --api=http://127.0.0.1:3000
+```
 
 ## 8. Lưu ý khi chạy Prisma + MySQL trên Vercel
 

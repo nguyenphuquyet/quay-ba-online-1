@@ -4,7 +4,7 @@ extends Node
 
 const APP_NAME := "QUẨY BAR ONLINE"
 const APP_VERSION := "0.1.0"
-const DEFAULT_API_URL := "http://127.0.0.1:3000"
+const DEFAULT_API_URL := "https://quay-bar-online-server.vercel.app"
 const DEFAULT_GAME_HOST := "127.0.0.1"
 const DEFAULT_GAME_PORT := 7000
 const MAX_ROOM_PLAYERS := 32
