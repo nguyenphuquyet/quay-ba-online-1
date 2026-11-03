@@ -4,7 +4,7 @@
 # database vẫn ở Aiven/MySQL. Nhờ vậy không phải chuyển dữ liệu người chơi.
 #
 # Cách dùng (trên VPS):
-#   cp multiplayer/.env.vps.example multiplayer/.env.vps
+#   cp multiplayer/vps.env.example multiplayer/.env.vps
 #   # sửa PUBLIC_GAME_HOST + GAME_SERVER_SECRET
 #   docker compose -f multiplayer/docker-compose.vps.yml --env-file multiplayer/.env.vps up -d --build
 #

@@ -40,7 +40,7 @@ Hoặc `docker compose up -d game-server heartbeat`.
 ### Chỉ game server trên VPS (backend vẫn ở Vercel)
 
 ```bash
-cp multiplayer/.env.vps.example multiplayer/.env.vps
+cp multiplayer/vps.env.example multiplayer/.env.vps
 # sửa PUBLIC_GAME_HOST + GAME_SERVER_SECRET
 docker compose -f multiplayer/docker-compose.vps.yml --env-file multiplayer/.env.vps up -d --build
 sudo ufw allow 7000/udp

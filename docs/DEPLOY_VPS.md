@@ -45,7 +45,7 @@ Nếu repo private, dùng deploy key hoặc `gh auth login` trên VPS.
 ## 3. Cấu hình
 
 ```bash
-cp multiplayer/.env.vps.example multiplayer/.env.vps
+cp multiplayer/vps.env.example multiplayer/.env.vps
 nano multiplayer/.env.vps
 ```
 
