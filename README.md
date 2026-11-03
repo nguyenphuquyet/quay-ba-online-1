@@ -37,7 +37,7 @@ Trong menu chọn **Chơi solo / offline** để vào club ngay mà không cần
 cd server
 cp .env.example .env        # điền DATABASE_URL, AUTH_SECRET, GAME_SERVER_SECRET
 npm install
-npx prisma migrate dev --name init
+npx prisma migrate deploy   # áp migration có sẵn trong prisma/migrations
 npm run dev                 # http://127.0.0.1:3000
 ```
 
@@ -46,6 +46,8 @@ MySQL 8 có thể chạy bằng Docker:
 ```bash
 docker compose up -d mysql redis
 ```
+
+Muốn đưa backend lên Internet: xem [docs/DEPLOY_VERCEL.md](docs/DEPLOY_VERCEL.md) (Next.js API chạy được trên Vercel; dedicated server Godot ENet/UDP thì không).
 
 ### 3. Dedicated game server
 

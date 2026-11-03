@@ -1,0 +1,89 @@
+name: Deploy backend to Vercel
+
+# Optional CI deploy. The recommended path is Vercel's own Git integration
+# (import the repo, Root Directory = server). Use this workflow if you want
+# GitHub Actions to be the only deployer.
+#
+# Required repository secrets:
+#   VERCEL_TOKEN        https://vercel.com/account/tokens
+#   VERCEL_ORG_ID       from .vercel/project.json after `vercel link`
+#   VERCEL_PROJECT_ID   from .vercel/project.json after `vercel link`
+# Optional:
+#   DATABASE_URL        if set, runs `prisma migrate deploy` before deploying
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy Next.js API
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify Vercel secrets
+        run: |
+          set -euo pipefail
+          for name in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing repository secret $name"
+              exit 1
+            fi
+          done
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Apply database migrations
+        if: ${{ env.DATABASE_URL != '' }}
+        working-directory: server
+        run: |
+          set -euo pipefail
+          npm ci
+          npx prisma migrate deploy
+
+      - name: Pull Vercel environment
+        working-directory: server
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+
+      - name: Build project
+        working-directory: server
+        run: vercel build --prod --token="$VERCEL_TOKEN"
+
+      - name: Deploy to production
+        id: deploy
+        working-directory: server
+        run: |
+          set -euo pipefail
+          URL="$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "Deployed: $URL" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Smoke test health endpoint
+        run: |
+          set -euo pipefail
+          URL="${{ steps.deploy.outputs.url }}"
+          for attempt in 1 2 3 4 5; do
+            if curl -fsS "$URL/api/health" | tee /tmp/health.json; then
+              break
+            fi
+            sleep 5
+          done
+          python3 -c "import json;d=json.load(open('/tmp/health.json'));assert d['status']=='ok';print('database:',d['database'])"
