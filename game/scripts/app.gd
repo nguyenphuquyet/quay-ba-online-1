@@ -989,12 +989,27 @@ func _log_phase(phase_name: String, stats: Dictionary) -> void:
 	])
 
 
-func _run_net_smoke(port_text: String) -> void:
-	var port := int(port_text)
-	print("[NET-SMOKE] kết nối tới 127.0.0.1:%d" % port)
+func _run_net_smoke(target: String) -> void:
+	## Chấp nhận "port" (127.0.0.1), hoặc "host:port", hoặc "host:port:ticket"
+	## để kiểm tra dedicated server thật trên VPS với ticket thật.
+	var host := "127.0.0.1"
+	var port := 7000
+	var ticket := "dev-ticket"
+	var parts := target.split(":")
+	if parts.size() >= 2 and parts[1].is_valid_int():
+		host = parts[0]
+		port = int(parts[1])
+		if parts.size() >= 3:
+			ticket = parts[2]
+	elif parts.size() == 1 and parts[0].is_valid_int():
+		port = int(parts[0])
+	print("[NET-SMOKE] kết nối tới %s:%d (ticket %s)" % [host, port, "dev" if ticket == "dev-ticket" else "thật"])
+	Net.join_failed.connect(func(reason: String): printerr("[NET-SMOKE] join_failed: " + reason))
 	_load_world({"code": "NETSMOKE", "name": "Net Smoke", "maxPlayers": 8}, false)
-	Net.connect_to_room("127.0.0.1", port, "dev-ticket")
-	await get_tree().create_timer(3.0).timeout
+	Net.connect_to_room(host, port, ticket)
+	# Xác minh ticket đi vòng qua backend (có thể mất vài giây nếu server ở xa),
+	# nên chờ đủ lâu trước khi kết luận.
+	await get_tree().create_timer(12.0).timeout
 	var players_count := Net.players.size()
 	print("[NET-SMOKE] players=%d roster=%d local=%d owner=%d connected=%s" % [players_count, Net.roster.size(), Net.local_peer_id, Net.owner_id, str(Net.is_online())])
 	var ok := players_count >= 1 and Net.is_online()

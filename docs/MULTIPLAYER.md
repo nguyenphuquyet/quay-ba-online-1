@@ -110,6 +110,10 @@ Kiểm thử bằng máy thật khác:
 godot --headless --path game --script res://tools/net_probe.gd -- <host> <port>
 # [PROBE] status=2 (OK)
 
+# vào phòng thật bằng ticket thật (host:port:ticket)
+godot --headless --path game -- --net-smoke=<host>:<port>:<ticket>
+# [NET-SMOKE] players=2 roster=2 ... OK
+
 # muốn thử offline: dựng server ENet tối giản ở máy
 godot --headless --path game --script res://tools/net_echo_server.gd -- 7101
 ```

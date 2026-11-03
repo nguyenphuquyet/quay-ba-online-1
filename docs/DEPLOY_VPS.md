@@ -11,6 +11,28 @@ Client ──HTTP──▶ Vercel (auth/room/ticket) ──▶ Aiven MySQL
    └──ENet UDP 3221──▶ VPS (Godot headless) ──HTTP verify ticket──▶ Vercel
 ```
 
+## Trạng thái deploy hiện tại
+
+| Hạng mục | Giá trị |
+| --- | --- |
+| Domain game | `serverbar1.nguyenphuquyet.online` → `18.138.228.21` |
+| Cổng | UDP `3221` |
+| Server | Godot 4.7.2 headless trong Docker, giới hạn 60 fps |
+| Heartbeat | ONLINE, backend trả `game.host = serverbar1.nguyenphuquyet.online`, `game.port = 3221` |
+| Backend | `https://quay-bar-online-server.vercel.app` (Vercel) |
+
+Đã kiểm chứng thật (không phải giả lập):
+
+```bash
+# 1. handshake ENet
+godot --headless --path game --script res://tools/net_probe.gd -- serverbar1.nguyenphuquyet.online 3221
+# [PROBE] status=2 (OK)
+
+# 2. vào phòng bằng ticket thật, 2 client cùng lúc
+godot --headless --path game -- --net-smoke=serverbar1.nguyenphuquyet.online:3221:<ticket>
+# [NET-SMOKE] players=2 roster=2 ... OK
+```
+
 ## 0. Cần có
 
 - VPS Ubuntu 22.04/24.04 (hoặc Debian), **IPv4 công khai**.
@@ -97,6 +119,11 @@ Kiểm tra nhanh handshake ENet từ máy khác:
 godot --headless --path game --script res://tools/net_probe.gd -- serverbar1.nguyenphuquyet.online 3221
 # [PROBE] status=2 (OK)
 ```
+
+> **Không dùng Nginx Proxy Manager cho cổng game.** NPM chỉ proxy HTTP/HTTPS.
+> ENet đi bằng **UDP 3221** thẳng vào IP VPS, DNS trỏ domain về IP là đủ.
+> Nếu bật Cloudflare proxy (đám mây cam) thì đổi sang "DNS only" vì Cloudflare
+> không proxy UDP.
 
 ## 5. Chạy
 
