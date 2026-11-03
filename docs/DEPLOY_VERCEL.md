@@ -1,5 +1,20 @@
 # Deploy backend lên Vercel
 
+## 0. Trạng thái deploy hiện tại
+
+| Hạng mục | Giá trị |
+| --- | --- |
+| URL production | https://quay-bar-online-server.vercel.app |
+| Health check | https://quay-bar-online-server.vercel.app/api/health → `{"status":"ok","database":"up"}` |
+| Vercel project | `nguyenphuquyet/quay-bar-online-server` (Root Directory: `server`, region `sin1`) |
+| Database | Aiven for MySQL 8, database `defaultdb`, migration `20261103120000_init` đã áp dụng |
+| Bảo vệ deployment | Đã tắt Vercel Authentication để client Godot gọi API công khai |
+| Biến môi trường | `DATABASE_URL`, `AUTH_SECRET`, `GAME_SERVER_SECRET` (production + preview) |
+
+Đã kiểm tra thực tế: `POST /api/auth/register` → 201, `POST /api/auth/login` → 200, `GET /api/rooms` → 200.
+
+Việc còn lại: deploy **dedicated game server Godot** ở nơi khác (VPS/Railway/Fly.io), mở UDP, rồi cập nhật `GAME_SERVER_HOST`/`GAME_SERVER_PORT` trên Vercel và đặt `QBO_GAME_SECRET` trùng `GAME_SERVER_SECRET`.
+
 ## 1. Deploy được gì, không deploy được gì
 
 | Thành phần | Vercel | Ghi chú |

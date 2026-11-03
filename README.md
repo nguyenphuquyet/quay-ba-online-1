@@ -13,6 +13,8 @@ Game nightclub xã hội 3D multiplayer, đa nền tảng (Windows / Android / i
 | Backend web/API | Next.js 16 App Router, TypeScript, Prisma, MySQL 8, Redis (tùy chọn) | [`server/`](server) |
 | Tài liệu | Kiến trúc, API, multiplayer, build, browser, license | [`docs/`](docs) |
 
+Backend production đang chạy tại **https://quay-bar-online-server.vercel.app** (health: `/api/health`). Hướng dẫn deploy/DB: [docs/DEPLOY_VERCEL.md](docs/DEPLOY_VERCEL.md).
+
 Không dùng Express/NestJS. Không có server Node riêng cho gameplay: đồng bộ vị trí/animation/interaction đi qua ENet, backend Next.js chỉ cấp tài khoản, phòng và game ticket.
 
 ## Chạy nhanh

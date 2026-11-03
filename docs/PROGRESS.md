@@ -58,7 +58,8 @@ Phiên bản: 0.1.0 (nền tảng MVP)
 - [ ] Voice chat WebRTC/SFU: chưa triển khai.
 - [ ] Chat lịch sử/persistence: chưa (chat hiện realtime qua ENet).
 - [ ] Docker compose: file có, chưa chạy do máy không có Docker.
-- [ ] MySQL migration thật: schema validate nhưng chưa chạy migrate/seed với MySQL 8 (không có MySQL).
+- [x] MySQL migration thật: migration `20261103120000_init` đã chạy trên **Aiven MySQL 8**; backend deploy Vercel tại https://quay-bar-online-server.vercel.app (`/api/health` → `database: up`, register/login đã test).
+- [ ] Dedicated game server public: chưa deploy lên VPS; client vẫn mặc định `127.0.0.1:7000`.
 
 ## 3. File đã tạo/chỉnh sửa chính
 
