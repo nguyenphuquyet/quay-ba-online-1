@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   build-android:
-    name: Export debug APK (arm64)
+    name: Export release APK (arm64)
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -144,16 +144,42 @@ jobs:
 
       - name: Export Android release APK
         run: |
-          set -euo pipefail
+          set -uo pipefail
           OUT="$PWD/game/build/android/${EXPORT_NAME}-release.apk"
-          "$GODOT_BIN" --headless --path game --export-release "Android" "$OUT"
-          test -f "$OUT"
-          ls -lh "$OUT"
+          LOG="$RUNNER_TEMP/android-export.log"
+          "$GODOT_BIN" --headless --path game --export-release "Android" "$OUT" 2>&1 | tee "$LOG"
+          STATUS=${PIPESTATUS[0]}
+          echo "EXPORT_STATUS=$STATUS" >> "$GITHUB_ENV"
+          exit "$STATUS"
 
       - name: Upload Android release APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: QuayBarOnline-android-release-apk
           path: game/build/android/QuayBarOnline-release.apk
           if-no-files-found: error
           retention-days: 30
+
+      - name: Build diagnostics
+        if: always()
+        run: |
+          {
+            echo "### Android build diagnostics"
+            echo "- export exit status: \`${EXPORT_STATUS:-unknown}\`"
+            echo ""
+            echo "#### Godot editor settings (Android)"
+            echo '```'
+            grep -n "export/android" "$HOME/.config/godot/editor_settings-4.7.tres" 2>/dev/null || echo "(settings file missing)"
+            echo '```'
+            echo "#### Android SDK layout"
+            echo '```'
+            echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-}"
+            ls "$ANDROID_SDK_ROOT/build-tools" 2>/dev/null || true
+            ls "$ANDROID_SDK_ROOT/platforms" 2>/dev/null || true
+            echo '```'
+            echo "#### Export log (tail 180)"
+            echo '```'
+            tail -n 180 "$RUNNER_TEMP/android-export.log" 2>/dev/null || echo "(no export log; failure happened earlier)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
