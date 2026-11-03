@@ -160,22 +160,15 @@ jobs:
             game/addons/qbo_webview_android/bin/QBOWebViewAndroid-release.aar
           ls -la game/addons/qbo_webview_android/bin
 
-      - name: Install Android build template
-        run: |
-          set -euo pipefail
-          "$GODOT_BIN" --headless --path game --install-android-build-template
-          test -f game/android/build/build.gradle
-          test -f game/android/build/AndroidManifest.xml
-          # Plugin export của game phải được bật để AAR đi vào bản build.
-          grep -n "editor_plugins" game/project.godot || true
-          ls -la game/android/build | head -n 20
-
       - name: Export Android release APK
         run: |
           set -uo pipefail
           OUT="$PWD/game/build/android/${EXPORT_NAME}-release.apk"
           LOG="$RUNNER_TEMP/android-export.log"
-          "$GODOT_BIN" --headless --path game --export-release "Android" "$OUT" 2>&1 | tee "$LOG"
+          # `--install-android-build-template` chỉ có tác dụng khi đi kèm lệnh export:
+          # nó giải nén template rồi export luôn (chạy một mình sẽ mở editor và treo).
+          "$GODOT_BIN" --headless --path game --install-android-build-template \
+            --export-release "Android" "$OUT" 2>&1 | tee "$LOG"
           STATUS=${PIPESTATUS[0]}
           echo "EXPORT_STATUS=$STATUS" >> "$GITHUB_ENV"
           exit "$STATUS"
