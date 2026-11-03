@@ -66,7 +66,7 @@ Ba workflow GitHub Actions dùng chung `game/export_presets.cfg`:
 | Nền tảng | Workflow | Artifact |
 | --- | --- | --- |
 | Windows x86_64 | [`.github/workflows/windows.yml`](.github/workflows/windows.yml) | `QuayBarOnline-windows-x86_64.zip` (1 file `.exe` đã nhúng PCK) |
-| Android (arm64) | [`.github/workflows/android.yml`](.github/workflows/android.yml) | `QuayBarOnline-android-debug-apk` (APK ký bằng debug key) |
+| Android (arm64, release) | [`.github/workflows/android.yml`](.github/workflows/android.yml) | `QuayBarOnline-android-release-apk` (APK release, ký bằng keystore tạo trong CI hoặc secret) |
 | iOS (IPA không ký) | [`.github/workflows/ios-unsigned.yml`](.github/workflows/ios-unsigned.yml) | `QuayBarOnline-unsigned-ipa` |
 
 Chạy thủ công: **Actions → chọn workflow → Run workflow**. Các workflow cũng tự chạy khi push lên `main` nếu có thay đổi trong `game/`.

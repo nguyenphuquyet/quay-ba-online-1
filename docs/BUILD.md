@@ -57,7 +57,20 @@ Workflow tự động: `.github/workflows/windows.yml` (Windows runner) tạo ar
    - Permissions: INTERNET bắt buộc.
 4. Export APK/AAB.
 
-Workflow tự động: `.github/workflows/android.yml` (Ubuntu + JDK 17 + Android SDK 36). Workflow tạo debug keystore tạm, export **APK debug** ký bằng keystore đó và upload artifact `QuayBarOnline-android-debug-apk`. Keystore không được commit.
+Workflow tự động: `.github/workflows/android.yml` (Ubuntu + JDK 17 + Android SDK 36) export **APK release**:
+
+- Nếu có secret `ANDROID_KEYSTORE_BASE64` (+ `ANDROID_KEYSTORE_USER`, `ANDROID_KEYSTORE_PASSWORD`), workflow dùng keystore cố định của bạn.
+- Nếu không, workflow tạo keystore release tạm và ký APK bằng key đó (cài được, nhưng không thể cập nhật đè lên bản build bằng key khác).
+- Artifact: `QuayBarOnline-android-release-apk` chứa `QuayBarOnline-release.apk`.
+
+Keystore không được commit. Muốn phát hành cập nhật lâu dài, tạo keystore và lưu base64 vào GitHub Secrets:
+
+```bash
+keytool -genkeypair -v -keystore release.keystore -storepass '...' \
+  -alias quaybar -keypass '...' -keyalg RSA -keysize 2048 -validity 10000 \
+  -dname "CN=Quay Bar Online,O=Nguyen Phu Quyet,C=VN"
+base64 -w0 release.keystore   # dán vào secret ANDROID_KEYSTORE_BASE64
+```
 
 **Chưa kiểm chứng**: môi trường hiện tại không có Android SDK/thiết bị, nên chưa thể xác nhận build và hiệu năng thực tế.
 

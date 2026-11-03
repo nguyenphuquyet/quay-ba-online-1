@@ -106,37 +106,54 @@ jobs:
             "$ANDROID_SDK_ROOT" "$JAVA_HOME" >> "$SETTINGS"
           grep -n "export/android/.*_sdk_path" "$SETTINGS"
 
-      - name: Generate debug keystore
+      - name: Prepare release keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_USER: ${{ secrets.ANDROID_KEYSTORE_USER }}
+          KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           set -euo pipefail
           mkdir -p game/build/android
-          keytool -genkeypair -v \
-            -keystore game/build/android/debug.keystore \
-            -storepass android -alias androiddebugkey -keypass android \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -dname "CN=Android Debug,O=Android,C=US"
+          KEYSTORE="$PWD/game/build/android/release.keystore"
+
+          if [ -n "${KEYSTORE_B64:-}" ]; then
+            echo "Using keystore from repository secrets."
+            echo "$KEYSTORE_B64" | base64 -d > "$KEYSTORE"
+            USER_NAME="${KEYSTORE_USER:?ANDROID_KEYSTORE_USER secret is required}"
+            PASSWORD="${KEYSTORE_PASS:?ANDROID_KEYSTORE_PASSWORD secret is required}"
+          else
+            echo "No ANDROID_KEYSTORE_BASE64 secret; generating an ephemeral release key."
+            USER_NAME="quaybar"
+            PASSWORD="quaybaronline"
+            keytool -genkeypair -v \
+              -keystore "$KEYSTORE" \
+              -storepass "$PASSWORD" -alias "$USER_NAME" -keypass "$PASSWORD" \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Quay Bar Online,O=Nguyen Phu Quyet,C=VN"
+          fi
+
           {
-            echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$PWD/game/build/android/debug.keystore"
-            echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey"
-            echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android"
+            echo "GODOT_ANDROID_KEYSTORE_RELEASE_PATH=$KEYSTORE"
+            echo "GODOT_ANDROID_KEYSTORE_RELEASE_USER=$USER_NAME"
+            echo "GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD=$PASSWORD"
           } >> "$GITHUB_ENV"
 
       - name: Import project resources
         run: |
           "$GODOT_BIN" --headless --path game --import || true
 
-      - name: Export Android APK
+      - name: Export Android release APK
         run: |
           set -euo pipefail
-          OUT="$PWD/game/build/android/${EXPORT_NAME}.apk"
-          "$GODOT_BIN" --headless --path game --export-debug "Android" "$OUT"
+          OUT="$PWD/game/build/android/${EXPORT_NAME}-release.apk"
+          "$GODOT_BIN" --headless --path game --export-release "Android" "$OUT"
           test -f "$OUT"
           ls -lh "$OUT"
 
-      - name: Upload Android APK
+      - name: Upload Android release APK
         uses: actions/upload-artifact@v4
         with:
-          name: QuayBarOnline-android-debug-apk
-          path: game/build/android/QuayBarOnline.apk
+          name: QuayBarOnline-android-release-apk
+          path: game/build/android/QuayBarOnline-release.apk
           if-no-files-found: error
           retention-days: 30

@@ -84,6 +84,8 @@ jobs:
           set -euo pipefail
           cd "$PROJECT_DIR/build/ios"
 
+          LOG="$RUNNER_TEMP/xcodebuild.log"
+          set +e
           xcodebuild \
             -project "${EXPORT_NAME}.xcodeproj" \
             -scheme "${EXPORT_NAME}" \
@@ -97,7 +99,24 @@ jobs:
             CODE_SIGN_ENTITLEMENTS="" \
             DEVELOPMENT_TEAM="" \
             PROVISIONING_PROFILE_SPECIFIER="" \
-            build
+            ENABLE_USER_SCRIPT_SANDBOXING=NO \
+            build 2>&1 | tee "$LOG"
+          STATUS=${PIPESTATUS[0]}
+          set -e
+
+          {
+            echo "### xcodebuild exit code: ${STATUS}"
+            echo '```'
+            xcodebuild -list -project "${EXPORT_NAME}.xcodeproj" 2>&1 || true
+            echo '```'
+            echo '```'
+            tail -n 120 "$LOG" || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$STATUS" -ne 0 ]; then
+            exit "$STATUS"
+          fi
 
           APP_PATH="DerivedData/Build/Products/Release-iphoneos/${EXPORT_NAME}.app"
           test -d "$APP_PATH"
