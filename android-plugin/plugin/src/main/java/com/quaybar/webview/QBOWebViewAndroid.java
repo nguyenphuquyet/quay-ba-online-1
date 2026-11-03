@@ -142,6 +142,30 @@ public class QBOWebViewAndroid extends GodotPlugin {
     }
 
     @Override
+    public void onMainPause() {
+        if (webView != null) {
+            webView.onPause();
+        }
+    }
+
+    @Override
+    public void onMainResume() {
+        if (webView != null && isOpen()) {
+            webView.onResume();
+        }
+    }
+
+    @Override
+    public boolean onMainBackPressed() {
+        // Nút Back đóng lớp phủ TV thay vì thoát game.
+        if (isOpen()) {
+            mainHandler.post(this::hideOverlay);
+            return true;
+        }
+        return false;
+    }
+
+    @Override
     public void onMainDestroy() {
         if (webView != null) {
             overlay.removeView(webView);

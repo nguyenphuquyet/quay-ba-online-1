@@ -476,6 +476,10 @@ func apply_state(state: Dictionary) -> void:
 	status_label.text = status if status != "" else ("Đang phát" if playing else "Đã dừng")
 	provider_label.text = provider_status
 	progress_label.text = _format_time(position) if kind == "video" and playing else ""
+	# Mobile có WebView native: vẫn chưa đưa được hình vào texture 3D, nhưng mở
+	# được player toàn màn hình đúng nội dung cả phòng đang xem.
+	if native_player_available() and (kind == "youtube" or kind == "web") and native_player_url() != "":
+		status_label.text = "Cả phòng đang xem cùng nội dung — mở menu → TV sân khấu để xem."
 	if kind == "video" and url != "" and provider_status.begins_with("Sẵn sàng"):
 		_play_video(url, position, playing)
 	else:
@@ -897,8 +901,8 @@ func play_youtube(url_input: String, title := "") -> Dictionary:
 		"volume": float(current_state.get("volume", 1.0)),
 		"kind": "youtube",
 		"video_id": video_id,
-		"status": "Đang phát video YouTube (nhúng)." if can_render else "Đã đồng bộ video YouTube cho cả phòng. Thiết bị này chưa có trình duyệt nhúng nên không hiển thị được.",
-		"provider": ("Sẵn sàng — %s" % web_backend_name()) if can_render else "Đã đồng bộ — thiết bị này không nhúng được",
+		"status": "Đang phát video YouTube (nhúng)." if can_render else ("Đã đồng bộ cho cả phòng. Mở menu → TV sân khấu để xem." if native_player_available() else "Đã đồng bộ video YouTube cho cả phòng. Thiết bị này chưa có trình duyệt nhúng nên không hiển thị được."),
+		"provider": ("Sẵn sàng — %s" % web_backend_name()) if can_render else ("Sẵn sàng — WebView native" if native_player_available() else "Đã đồng bộ — thiết bị này không nhúng được"),
 		"by": GameState.display_name(),
 		"updated_at": Time.get_unix_time_from_system(),
 	}
