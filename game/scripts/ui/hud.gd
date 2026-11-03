@@ -22,8 +22,9 @@ var _player_panel_open := false
 var _chat_open := false
 var _mobile: Control
 var _joystick: QBOVirtualJoystick
-var _look_area: Control
 var _run_button: Button
+var _look_touch := -1
+var _look_last := Vector2.ZERO
 var _connected := false
 var _refresh_timer := 0.0
 
@@ -57,6 +58,9 @@ func on_show() -> void:
 	_menu_panel.visible = false
 	_menu_open = false
 	_close_quick_menu()
+	_look_touch = -1
+	if _joystick != null:
+		_joystick.visible = true
 	ui.call("set_hud_blocked", false) if ui.has_method("set_hud_blocked") else null
 	if not AppConfig.is_mobile:
 		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
@@ -391,19 +395,22 @@ func _build_mobile_controls() -> void:
 	_mobile.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_mobile)
 
-	_look_area = Control.new()
-	_look_area.set_anchors_and_offsets_preset(Control.PRESET_RIGHT_WIDE)
-	_look_area.offset_left = -420
-	_look_area.mouse_filter = Control.MOUSE_FILTER_STOP
-	_look_area.gui_input.connect(_on_look_input)
-	_mobile.add_child(_look_area)
+	_look_touch = -1
 
+	# Nửa trái màn hình là vùng di chuyển: chạm đâu joystick mọc ra đó.
+	# Vùng joystick chỉ chiếm góc dưới-trái (ngón cái). Trước đây vùng này
+	# rộng 56% × 85% màn hình nên phần lớn chỗ vuốt đều bị joystick nuốt mất,
+	# khiến người chơi tưởng "xoay camera không ăn".
 	_joystick = QBOVirtualJoystick.new()
-	_joystick.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	_joystick.offset_left = 28
-	_joystick.offset_top = -212
-	_joystick.offset_right = 204
-	_joystick.offset_bottom = -36
+	_joystick.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	_joystick.anchor_left = 0.0
+	_joystick.anchor_top = 0.52
+	_joystick.anchor_right = 0.38
+	_joystick.anchor_bottom = 1.0
+	_joystick.offset_left = 0
+	_joystick.offset_top = 0
+	_joystick.offset_right = 0
+	_joystick.offset_bottom = 0
 	_joystick.moved.connect(_on_joystick)
 	_mobile.add_child(_joystick)
 
@@ -491,11 +498,40 @@ func _on_joystick(value: Vector2) -> void:
 		player.set_touch_move(value)
 
 
-func _on_look_input(event: InputEvent) -> void:
-	if event is InputEventScreenDrag:
+func _unhandled_input(event: InputEvent) -> void:
+	## Xoay camera bằng ngón tay ở mọi vùng trống trên màn hình (trừ vùng
+	## joystick / nút bấm đã bị các Control đó nhận trước). Trước đây chỉ có
+	## một dải 420px bên phải nên chạm ra ngoài là camera "không ăn".
+	if not AppConfig.is_mobile or not visible:
+		return
+	if _chat_open or _menu_open:
+		return
+	if _quick_menu != null and _quick_menu.visible:
+		return
+	if ui != null and bool(ui.call("is_overlay_open")):
+		return
+	if event is InputEventScreenTouch:
+		var touch := event as InputEventScreenTouch
+		if touch.pressed:
+			# Luôn nhận ngón mới nhất. Nếu một lần nhấc tay trước đó bị UI
+			# nuốt mất, trạng thái cũ không còn khoá camera nữa.
+			_look_touch = touch.index
+			_look_last = touch.position
+		elif touch.index == _look_touch:
+			_look_touch = -1
+	elif event is InputEventScreenDrag:
+		var drag := event as InputEventScreenDrag
+		if drag.index != _look_touch:
+			return
 		var player = App.local_player()
-		if player != null:
-			player.add_touch_look((event as InputEventScreenDrag).relative)
+		if player == null:
+			return
+		# Tính theo hiệu vị trí thực tế thay vì `relative` để ổn định trên
+		# Android/iOS ở các mức DPI khác nhau.
+		var move := drag.position - _look_last
+		_look_last = drag.position
+		if move.length_squared() > 0.0:
+			player.add_touch_look(move)
 
 
 func _input(event: InputEvent) -> void:
@@ -531,6 +567,11 @@ func _input(event: InputEvent) -> void:
 func _open_chat() -> void:
 	_set_chat_visible(true)
 	_chat_open = true
+	# Bàn phím ảo đang mở thì tắt joystick để không chặn ô nhập chat.
+	if _joystick != null:
+		_joystick.visible = false
+		_on_joystick(Vector2.ZERO)
+	_look_touch = -1
 	_chat_input.grab_focus()
 	ui.call("set_chat_focused", true)
 	if AppConfig.is_mobile:
@@ -541,6 +582,9 @@ func _open_chat() -> void:
 
 func _close_chat() -> void:
 	_chat_open = false
+	if _joystick != null:
+		_joystick.visible = true
+	_look_touch = -1
 	_chat_input.release_focus()
 	_chat_input.text = ""
 	_set_chat_visible(false)

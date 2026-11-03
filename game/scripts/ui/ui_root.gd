@@ -19,6 +19,7 @@ const OVERLAY_PATHS := {
 }
 
 var root: Control
+var safe_root: Control
 var screens: Dictionary = {}
 var overlays: Dictionary = {}
 var current_screen := ""
@@ -47,12 +48,23 @@ func boot() -> void:
 	add_child(root)
 
 	_build_background()
+
+	# Mọi màn hình/overlay nằm trong safe_root để chừa vùng tai thỏ và bo góc
+	# trên điện thoại. Nền vẫn phủ kín màn hình (không bị viền đen hai bên).
+	safe_root = Control.new()
+	safe_root.name = "SafeArea"
+	safe_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	safe_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(safe_root)
+
 	_build_toast_layer()
 	GameState.toast_requested.connect(toast)
 	Net.join_failed.connect(_on_join_failed)
 	Net.kicked.connect(_on_kicked)
 	Net.connection_lost.connect(_on_connection_lost)
 
+	get_viewport().size_changed.connect(_apply_safe_area)
+	_apply_safe_area()
 	show_screen("splash")
 	await get_tree().create_timer(1.4).timeout
 	if GameState.is_logged_in():
@@ -113,7 +125,7 @@ func _build_toast_layer() -> void:
 	_toast_box.offset_top = 26
 	_toast_box.add_theme_constant_override("separation", 8)
 	_toast_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(_toast_box)
+	safe_root.add_child(_toast_box)
 
 
 # ------------------------------------------------------------------ screens
@@ -146,8 +158,31 @@ func _instantiate(path: String, node_name: String) -> Control:
 	node.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	node.visible = false
 	node.ui = self
-	root.add_child(node)
+	(safe_root if safe_root != null else root).add_child(node)
 	return node
+
+
+func _apply_safe_area() -> void:
+	## Trên điện thoại có tai thỏ/bo góc, đẩy toàn bộ UI vào vùng an toàn để
+	## không bị cắt mất hai mép. Nền vẫn phủ kín nên không lộ viền đen.
+	if safe_root == null:
+		return
+	safe_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	if not AppConfig.is_mobile:
+		return
+	var screen := DisplayServer.screen_get_size()
+	var safe := DisplayServer.get_display_safe_area()
+	if screen.x <= 0 or screen.y <= 0 or safe.size.x <= 0 or safe.size.y <= 0:
+		return
+	var view := get_viewport().get_visible_rect().size
+	var left := clampf(float(safe.position.x) / float(screen.x), 0.0, 0.2)
+	var top := clampf(float(safe.position.y) / float(screen.y), 0.0, 0.2)
+	var right := clampf(float(screen.x - safe.position.x - safe.size.x) / float(screen.x), 0.0, 0.2)
+	var bottom := clampf(float(screen.y - safe.position.y - safe.size.y) / float(screen.y), 0.0, 0.2)
+	safe_root.offset_left = round(view.x * left)
+	safe_root.offset_top = round(view.y * top)
+	safe_root.offset_right = -round(view.x * right)
+	safe_root.offset_bottom = -round(view.y * bottom)
 
 
 func _update_background_visibility() -> void:
@@ -223,7 +258,7 @@ func open_overlay(kind: String, params: Dictionary = {}) -> void:
 	node.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	node.ui = self
 	node.params = params
-	root.add_child(node)
+	(safe_root if safe_root != null else root).add_child(node)
 	overlays[kind] = node
 	_overlay_open = true
 	_menu_background.visible = false

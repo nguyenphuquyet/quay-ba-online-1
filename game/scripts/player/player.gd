@@ -6,6 +6,11 @@ extends CharacterBody3D
 const INTERACT_DISTANCE := 4.2
 const GRAVITY := 9.8
 const MOUSE_SENS := 0.0023
+# Cảm biến xoay camera bằng ngón tay (radian/pixel). Cao hơn chuột để bù việc
+# ngón tay di chuyển quãng ngắn hơn nhiều so với chuột.
+const TOUCH_LOOK_SENS := 0.0055
+# Chặn delta quá lớn khi màn hình bị nhảy cảm ứng, tránh camera giật một cú.
+const TOUCH_LOOK_MAX_STEP := 140.0
 
 # Camera góc nhìn thứ ba kiểu GTA V: quỹ đạo quanh đầu, lệch vai phải,
 # kéo gần khi vướng vật cản và bám có độ trễ nhẹ.
@@ -163,7 +168,6 @@ func _physics_process(delta: float) -> void:
 		global_position = _seated_position
 		rotation.y = _seated_yaw
 		_yaw = _seated_yaw
-		_update_camera(delta)
 		_animate(delta, 0.0)
 		return
 
@@ -187,14 +191,7 @@ func _physics_process(delta: float) -> void:
 	else:
 		rotation.y = _yaw
 
-	# Touch look áp dụng mỗi frame.
-	if _touch_look.length_squared() > 0.0:
-		_yaw -= _touch_look.x * 0.004
-		_pitch = clampf(_pitch - _touch_look.y * 0.004, PITCH_MIN, PITCH_MAX)
-		_touch_look = Vector2.ZERO
-
 	_apply_emote_decay(delta)
-	_update_camera(delta)
 	_animate(delta, Vector2(velocity.x, velocity.z).length())
 	_update_prompt(delta)
 	_send_state(delta)
@@ -203,6 +200,10 @@ func _physics_process(delta: float) -> void:
 func _process(delta: float) -> void:
 	if not is_local_player:
 		return
+	# Touch look + camera chạy ở nhịp render thay vì 60Hz physics để không bị
+	# giật khi màn hình 90/120Hz (cảm giác xoay không đều trước đây).
+	_apply_touch_look()
+	_update_camera(delta)
 	# Chuột bị nhả khi mở overlay; bắt lại khi đóng (trừ mobile).
 	if not AppConfig.is_mobile:
 		var captured := Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED
@@ -211,6 +212,15 @@ func _process(delta: float) -> void:
 			Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 		elif not captured and not blocked and not seated:
 			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+
+
+func _apply_touch_look() -> void:
+	if _touch_look.length_squared() <= 0.0:
+		return
+	var step := _touch_look.limit_length(TOUCH_LOOK_MAX_STEP)
+	_yaw -= step.x * TOUCH_LOOK_SENS
+	_pitch = clampf(_pitch - step.y * TOUCH_LOOK_SENS, PITCH_MIN, PITCH_MAX)
+	_touch_look = Vector2.ZERO
 
 
 func _update_body_facing(delta: float) -> void:
@@ -249,14 +259,12 @@ func _update_camera(delta: float, snap := false) -> void:
 
 		var desired := head + right * CAM_SHOULDER - view_dir * _cam_distance
 		desired.y = maxf(desired.y, 0.42)
-		if snap:
-			camera.global_position = desired
-		else:
-			camera.global_position = camera.global_position.lerp(desired, 1.0 - exp(-CAM_SMOOTH * delta))
+		# Gán trực tiếp: camera không trễ pha so với cú xoay ngón tay.
+		camera.global_position = desired
 		camera.look_at(pivot + view_dir * 6.0, Vector3.UP)
 		camera.fov = lerpf(camera.fov, _target_fov(), 1.0 - exp(-5.0 * delta))
 	else:
-		camera.position = camera.position.lerp(Vector3(0, 1.62, 0), 1.0 - exp(-18.0 * delta))
+		camera.position = Vector3(0, 1.62, 0)
 		camera.rotation = Vector3(_pitch, 0, 0)
 		camera.fov = lerpf(camera.fov, 74.0, 1.0 - exp(-5.0 * delta))
 
@@ -341,7 +349,7 @@ func set_touch_move(value: Vector2) -> void:
 
 
 func add_touch_look(delta: Vector2) -> void:
-	_touch_look += delta
+	_touch_look += delta.limit_length(TOUCH_LOOK_MAX_STEP)
 
 
 func set_sprint_toggle(value: bool) -> void:

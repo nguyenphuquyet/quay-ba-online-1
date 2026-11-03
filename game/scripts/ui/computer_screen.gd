@@ -50,12 +50,22 @@ func _build() -> void:
 	add_child(dim)
 
 	_window = PanelContainer.new()
-	_window.set_anchors_preset(Control.PRESET_CENTER)
-	# Cửa sổ lớn hơn hẳn để trang web đọc được; nút ⛶ còn phóng to gần kín màn hình.
-	_window.offset_left = -720
-	_window.offset_right = 720
-	_window.offset_top = -430
-	_window.offset_bottom = 430
+	if AppConfig.is_mobile:
+		# Trên điện thoại, cửa sổ cố định 1440×860 sẽ tràn ra ngoài màn hình
+		# ngang (chiều cao canvas chỉ ~720). Dùng gần full màn hình thay vì cắt mất
+		# ô nhập link ở mép dưới.
+		_window.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_window.offset_left = 8
+		_window.offset_top = 8
+		_window.offset_right = -8
+		_window.offset_bottom = -8
+	else:
+		_window.set_anchors_preset(Control.PRESET_CENTER)
+		# Cửa sổ lớn hơn hẳn để trang web đọc được; nút ⛶ còn phóng to gần kín màn hình.
+		_window.offset_left = -720
+		_window.offset_right = 720
+		_window.offset_top = -430
+		_window.offset_bottom = 430
 	_window.add_theme_stylebox_override("panel", QBOTheme.panel_style(Color(0.04, 0.032, 0.05, 0.98), 16, Color(0.85, 0.7, 0.43, 0.35)))
 	add_child(_window)
 	var root := QBOTheme.vbox(0)
@@ -134,11 +144,13 @@ func _build_browser(host: Control) -> void:
 	home.tooltip_text = "Về trang chủ LOTUS NET"
 	home.pressed.connect(func(): _navigate("qbo://home"))
 	nav.add_child(home)
-	_address = QBOTheme.line_edit("Dán link video YouTube: youtube.com/watch?v=… hoặc youtu.be/…")
+	_address = QBOTheme.line_edit("Dán link video YouTube: youtube.com/watch?v=… hoặc youtu.be/…", false, 512)
 	_address.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_address.text = ""
+	_address.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_URL
 	_address.text_submitted.connect(func(_t): _play_from_address())
 	nav.add_child(_address)
+	nav.add_child(_paste_button(_address))
 	var go := QBOTheme.button("▶ Phát video", true)
 	go.pressed.connect(_play_from_address)
 	nav.add_child(go)
@@ -191,11 +203,16 @@ func _build_tv(host: Control) -> void:
 	_tv_permission = QBOTheme.label("", 13, QBOTheme.GOLD)
 	tab.add_child(_tv_permission)
 
-	var row := QBOTheme.hbox(8)
+	var row: BoxContainer = QBOTheme.vbox(8) if AppConfig.is_mobile else QBOTheme.hbox(8)
 	tab.add_child(row)
-	_tv_url = QBOTheme.line_edit("Dán link video YouTube cần phát trên TV")
+	var input_row := QBOTheme.hbox(8)
+	input_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(input_row)
+	_tv_url = QBOTheme.line_edit("Dán link video YouTube cần phát trên TV", false, 512)
 	_tv_url.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(_tv_url)
+	_tv_url.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_URL
+	input_row.add_child(_tv_url)
+	input_row.add_child(_paste_button(_tv_url))
 	_tv_publish = QBOTheme.button("▶ Phát trên TV", true)
 	_tv_publish.pressed.connect(_publish_tv)
 	row.add_child(_tv_publish)
@@ -638,6 +655,31 @@ func _history_forward() -> void:
 		_navigate(url)
 
 
+func _paste_button(field: LineEdit) -> Button:
+	var button := QBOTheme.button("📋 Dán")
+	button.custom_minimum_size = Vector2(84, 44)
+	button.tooltip_text = "Dán nội dung đang có trong bộ nhớ tạm"
+	button.pressed.connect(func(): _paste_clipboard_into(field))
+	return button
+
+
+func _paste_clipboard_into(field: LineEdit) -> void:
+	## Android/iOS không hiện menu chuột phải của LineEdit khi chạm giữ, nên
+	## người chơi không có chỗ để chọn "Paste". Nút Dán đọc thẳng clipboard
+	## của hệ điều hành và đổ vào ô nhập.
+	if field == null or not is_instance_valid(field):
+		return
+	var clip := DisplayServer.clipboard_get().strip_edges()
+	clip = clip.replace("\r", "").replace("\n", "").replace("\t", "")
+	if clip == "":
+		if ui != null:
+			ui.call("toast", "Bộ nhớ tạm đang trống — hãy sao chép link trước rồi bấm Dán.", "warn")
+		return
+	field.grab_focus()
+	field.text = clip
+	field.caret_column = field.text.length()
+
+
 func _publish_tv() -> void:
 	if not Net.can_control("tv"):
 		ui.call("toast", "Bạn không có quyền điều khiển TV. Chủ phòng có thể cấp quyền.", "error")
@@ -692,9 +734,14 @@ func _toggle_fullscreen() -> void:
 
 
 func _apply_layout() -> void:
-	# Khi đang xem web: giấu dòng trạng thái; chế độ ⛶ giấu thêm thanh tab để
-	# nhường toàn bộ chiều cao cho trang.
-	if _fullscreen:
+	# Trên mobile luôn dùng gần full màn hình; cửa sổ cố định sẽ tràn viền.
+	if AppConfig.is_mobile:
+		_window.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_window.offset_left = 8
+		_window.offset_top = 8
+		_window.offset_right = -8
+		_window.offset_bottom = -8
+	elif _fullscreen:
 		_window.offset_left = -790
 		_window.offset_right = 790
 		_window.offset_top = -445
