@@ -192,11 +192,16 @@ func _build_quick_menu() -> void:
 
 
 func _open_stage_tv() -> void:
-	## Mobile: mở WebView native đúng video cả phòng đang xem. Desktop: mở bảng
-	## điều khiển TV (màn web đã render sẵn trong club).
+	## Android: mở WebView native đúng video cả phòng đang xem. iOS/PC thiếu
+	## trình duyệt nhúng: mở bằng ứng dụng hệ thống. PC có Chromium: mở bảng TV.
 	var tv = App.world.tv if App.world != null else null
-	if tv != null and tv.native_player_available() and tv.open_native_player():
-		return
+	if tv != null:
+		if tv.native_player_available() and tv.open_native_player():
+			return
+		if not tv.web_available():
+			var watch := str(tv.current_state.get("url", ""))
+			if watch.begins_with("http") and OS.shell_open(watch) == OK:
+				return
 	App.open_computer("tv")
 
 

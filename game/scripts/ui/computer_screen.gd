@@ -700,6 +700,10 @@ func _publish_tv() -> void:
 		# Thiết bị có WebView native (mobile) mở luôn video để người bấm thấy kết quả.
 		if App.world.tv.native_player_available():
 			App.world.tv.open_native_player()
+		elif not App.world.tv.web_available():
+			# iOS/desktop thiếu trình duyệt nhúng: mở bằng ứng dụng hệ thống, vẫn
+			# giữ trạng thái TV đồng bộ cho cả phòng.
+			OS.shell_open(url)
 	else:
 		ui.call("toast", str(result.get("reason", "Không phát được video.")), "error")
 	_refresh_tv_state()
