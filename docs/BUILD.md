@@ -44,16 +44,20 @@ Có thể truyền bằng CLI: `--api=…`, `--host=…`, `--port=…`.
 3. Embed PCK, chọn architecture x86_64.
 4. Export Project.
 
+Workflow tự động: `.github/workflows/windows.yml` (Windows runner) tạo artifact `QuayBarOnline-windows-x86_64.zip`, bên trong là một file `.exe` duy nhất đã nhúng PCK.
+
 ### Export Android
 
 1. Cài Android SDK + JDK 17; cấu hình Editor Settings → Export → Android.
-2. Project → Install Android Build Template.
+2. Project → Install Android Build Template (chỉ cần khi bật Gradle build).
 3. Export preset Android:
    - Renderer: **GL Compatibility** (`renderer/rendering_method.mobile="gl_compatibility"` đã cấu hình).
    - Texture compression: ETC2/ASTC.
    - Architectures: arm64-v8a (+ armeabi-v7a nếu cần).
    - Permissions: INTERNET bắt buộc.
 4. Export APK/AAB.
+
+Workflow tự động: `.github/workflows/android.yml` (Ubuntu + JDK 17 + Android SDK 36). Workflow tạo debug keystore tạm, export **APK debug** ký bằng keystore đó và upload artifact `QuayBarOnline-android-debug-apk`. Keystore không được commit.
 
 **Chưa kiểm chứng**: môi trường hiện tại không có Android SDK/thiết bị, nên chưa thể xác nhận build và hiệu năng thực tế.
 
@@ -65,6 +69,7 @@ Preset đã có sẵn trong `game/export_presets.cfg` (tên `iOS`):
 - Min iOS: 15.0, arm64, iPhone + iPad
 - `application/export_project_only=true` — chỉ xuất Xcode project để CI tự build
 - Team id trong preset chỉ là placeholder (`ABCDE12345`); build không dùng signing
+- `application/code_sign_identity_*="-"` để Godot ad-hoc ký các `.dylib` nhúng, tránh lỗi `codesign` khi không có chứng chỉ Apple. IPA cuối vẫn **không được ký**.
 
 #### Build tự động trên GitHub Actions (IPA không ký)
 

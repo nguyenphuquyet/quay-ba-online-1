@@ -1,0 +1,119 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "game/**"
+      - ".github/workflows/android.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-android:
+    name: Export debug APK (arm64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      GODOT_VERSION: "4.7.2"
+      EXPORT_NAME: QuayBarOnline
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platform-tools" "build-tools;36.0.0" "platforms;android-36"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          echo "JAVA_HOME=$JAVA_HOME"
+
+      - name: Install Godot and export templates
+        run: |
+          set -euo pipefail
+          GODOT_DIR="$RUNNER_TEMP/godot"
+          TEMPLATE_DIR="$HOME/.config/godot/export_templates/${GODOT_VERSION}.stable"
+          BASE_URL="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+
+          mkdir -p "$GODOT_DIR" "$TEMPLATE_DIR"
+
+          curl -L --fail --retry 3 --retry-delay 2 \
+            -o "$GODOT_DIR/godot.zip" \
+            "$BASE_URL/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q "$GODOT_DIR/godot.zip" -d "$GODOT_DIR"
+          chmod +x "$GODOT_DIR/Godot_v${GODOT_VERSION}-stable_linux.x86_64"
+
+          curl -L --fail --retry 3 --retry-delay 2 \
+            -o "$GODOT_DIR/templates.tpz" \
+            "$BASE_URL/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          unzip -q "$GODOT_DIR/templates.tpz" -d "$GODOT_DIR/templates"
+          cp -R "$GODOT_DIR/templates/templates/." "$TEMPLATE_DIR/"
+
+          echo "GODOT_BIN=$GODOT_DIR/Godot_v${GODOT_VERSION}-stable_linux.x86_64" >> "$GITHUB_ENV"
+          "$GODOT_DIR/Godot_v${GODOT_VERSION}-stable_linux.x86_64" --version
+
+      - name: Configure Android SDK paths in Godot
+        run: |
+          set -euo pipefail
+          # First editor run creates editor_settings-4.7.tres with all defaults.
+          "$GODOT_BIN" --headless --path game --editor --quit || true
+          SETTINGS="$HOME/.config/godot/editor_settings-4.7.tres"
+          if [ ! -f "$SETTINGS" ]; then
+            echo "Editor settings not found at $SETTINGS" >&2
+            find "$HOME/.config/godot" -maxdepth 1 -type f -print >&2 || true
+            exit 1
+          fi
+
+          sed -i '/^export\/android\/android_sdk_path =/d;/^export\/android\/java_sdk_path =/d' "$SETTINGS"
+          printf '\nexport/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\n' \
+            "$ANDROID_SDK_ROOT" "$JAVA_HOME" >> "$SETTINGS"
+          grep -n "export/android/.*_sdk_path" "$SETTINGS"
+
+      - name: Generate debug keystore
+        run: |
+          set -euo pipefail
+          mkdir -p game/build/android
+          keytool -genkeypair -v \
+            -keystore game/build/android/debug.keystore \
+            -storepass android -alias androiddebugkey -keypass android \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
+          {
+            echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$PWD/game/build/android/debug.keystore"
+            echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey"
+            echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android"
+          } >> "$GITHUB_ENV"
+
+      - name: Import project resources
+        run: |
+          "$GODOT_BIN" --headless --path game --import || true
+
+      - name: Export Android APK
+        run: |
+          set -euo pipefail
+          OUT="$PWD/game/build/android/${EXPORT_NAME}.apk"
+          "$GODOT_BIN" --headless --path game --export-debug "Android" "$OUT"
+          test -f "$OUT"
+          ls -lh "$OUT"
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: QuayBarOnline-android-debug-apk
+          path: game/build/android/QuayBarOnline.apk
+          if-no-files-found: error
+          retention-days: 30

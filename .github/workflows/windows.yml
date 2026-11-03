@@ -1,0 +1,77 @@
+name: Build Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "game/**"
+      - ".github/workflows/windows.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Export Windows x86_64
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    env:
+      GODOT_VERSION: "4.7.2"
+      EXPORT_NAME: QuayBarOnline
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Godot and export templates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $base = "https://github.com/godotengine/godot/releases/download/$env:GODOT_VERSION-stable"
+          $dir = Join-Path $env:RUNNER_TEMP "godot"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+
+          Invoke-WebRequest -Uri "$base/Godot_v$($env:GODOT_VERSION)-stable_win64.exe.zip" -OutFile "$dir\godot.zip"
+          Expand-Archive -Path "$dir\godot.zip" -DestinationPath $dir -Force
+
+          Invoke-WebRequest -Uri "$base/Godot_v$($env:GODOT_VERSION)-stable_export_templates.tpz" -OutFile "$dir\templates.tpz"
+          Expand-Archive -Path "$dir\templates.tpz" -DestinationPath "$dir\templates" -Force
+
+          $tpl = Join-Path $env:APPDATA "Godot\export_templates\$($env:GODOT_VERSION).stable"
+          New-Item -ItemType Directory -Force -Path $tpl | Out-Null
+          Copy-Item -Path "$dir\templates\templates\*" -Destination $tpl -Recurse -Force
+
+          $exe = Get-ChildItem -Path $dir -Filter "Godot_v*_win64_console.exe" | Select-Object -First 1
+          if (-not $exe) { throw "Godot console executable not found" }
+          "GODOT_BIN=$($exe.FullName)" >> $env:GITHUB_ENV
+          & $exe.FullName --version
+
+      - name: Import project resources
+        shell: pwsh
+        run: |
+          & $env:GODOT_BIN --headless --path game --import
+          if ($LASTEXITCODE -ne 0) { Write-Warning "Import exited with $LASTEXITCODE (continuing, export validates resources)" }
+
+      - name: Export Windows build
+        shell: pwsh
+        run: |
+          $outDir = Join-Path $env:GITHUB_WORKSPACE "game\build\windows"
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          $exe = Join-Path $outDir "$env:EXPORT_NAME.exe"
+
+          & $env:GODOT_BIN --headless --path game --export-release "Windows Desktop" $exe
+          if ($LASTEXITCODE -ne 0) { throw "Godot export failed with exit code $LASTEXITCODE" }
+          if (-not (Test-Path $exe)) { throw "Export did not produce $exe" }
+
+          Compress-Archive -Path $exe -DestinationPath (Join-Path $outDir "$env:EXPORT_NAME-windows-x86_64.zip") -Force
+          Get-ChildItem $outDir | Select-Object Name, Length
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: QuayBarOnline-windows-x86_64
+          path: game/build/windows/QuayBarOnline-windows-x86_64.zip
+          if-no-files-found: error
+          retention-days: 30

@@ -59,17 +59,19 @@ QBO_GAME_SECRET="..." QBO_API_URL="http://127.0.0.1:3000" godot --headless --pat
 
 Hoặc dùng `docker compose up game-server`. Chi tiết: [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md).
 
-### 4. Build iOS (IPA không ký)
+### 4. Build tự động (Windows / Android / iOS)
 
-Workflow [`.github/workflows/ios-unsigned.yml`](.github/workflows/ios-unsigned.yml) chạy trên macOS runner, export Xcode project bằng Godot 4.7.2 rồi build với code signing tắt hoàn toàn:
+Ba workflow GitHub Actions dùng chung `game/export_presets.cfg`:
 
-```text
-Actions → Build unsigned iOS IPA → Run workflow
-```
+| Nền tảng | Workflow | Artifact |
+| --- | --- | --- |
+| Windows x86_64 | [`.github/workflows/windows.yml`](.github/workflows/windows.yml) | `QuayBarOnline-windows-x86_64.zip` (1 file `.exe` đã nhúng PCK) |
+| Android (arm64) | [`.github/workflows/android.yml`](.github/workflows/android.yml) | `QuayBarOnline-android-debug-apk` (APK ký bằng debug key) |
+| iOS (IPA không ký) | [`.github/workflows/ios-unsigned.yml`](.github/workflows/ios-unsigned.yml) | `QuayBarOnline-unsigned-ipa` |
 
-Kết quả: artifact `QuayBarOnline-unsigned-ipa` chứa `QuayBarOnline-unsigned.ipa`.
+Chạy thủ công: **Actions → chọn workflow → Run workflow**. Các workflow cũng tự chạy khi push lên `main` nếu có thay đổi trong `game/`.
 
-> IPA **không có chữ ký Apple**, nên không cài trực tiếp được trên iPhone thường. Dùng để lưu trữ, kiểm tra cấu trúc app, hoặc ký lại bằng Sideloadly / AltStore / tài khoản developer của bạn. Chi tiết: [docs/BUILD.md](docs/BUILD.md#export-ios).
+> iOS IPA **không có chữ ký Apple**, nên không cài trực tiếp được trên iPhone thường. Dùng để lưu trữ, kiểm tra cấu trúc app, hoặc ký lại bằng Sideloadly / AltStore / tài khoản developer của bạn. Chi tiết: [docs/BUILD.md](docs/BUILD.md#export-ios).
 
 ## Điều khiển
 

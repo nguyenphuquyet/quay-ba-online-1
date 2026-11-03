@@ -51,8 +51,9 @@ Phiên bản: 0.1.0 (nền tảng MVP)
 ## 2. Đang thực hiện / đã có khung nhưng chưa kiểm chứng
 
 - [ ] **Visual QA**: đã có chế độ `--screenshot` render ảnh thật; đã tinh chỉnh sân khấu 2 TV, tiếp tục đánh giá ánh sáng/vật liệu.
-- [ ] Android export: chưa có SDK/thiết bị trong môi trường này.
-- [ ] iOS export: cần macOS/Xcode.
+- [x] Export preset Windows/Android/iOS trong `game/export_presets.cfg`; workflow GitHub Actions build Windows `.exe`, Android APK debug và iOS IPA không ký.
+- [ ] Android export: đã có workflow CI; chưa chạy thử trên thiết bị/kiểm tra hiệu năng.
+- [ ] iOS export: đã có workflow CI tạo IPA không ký; chưa cài trên thiết bị thật (cần ký lại).
 - [ ] Native WebView plugin cho mobile: adapter có, plugin chưa build (PC đã dùng CDP nên không cần).
 - [ ] Voice chat WebRTC/SFU: chưa triển khai.
 - [ ] Chat lịch sử/persistence: chưa (chat hiện realtime qua ENet).

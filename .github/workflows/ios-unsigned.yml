@@ -68,8 +68,16 @@ jobs:
           mkdir -p "$PROJECT_DIR/build/ios"
           "$GODOT_BIN" --headless --path "$PROJECT_DIR" \
             --export-release "iOS" \
-            "$PROJECT_DIR/build/ios/${EXPORT_NAME}.xcodeproj"
+            "$PROJECT_DIR/build/ios/${EXPORT_NAME}.xcodeproj" 2>&1 | tee "$RUNNER_TEMP/ios-export.log"
           ls -la "$PROJECT_DIR/build/ios"
+
+      - name: Show export error in summary
+        if: failure()
+        run: |
+          echo "### iOS export failed" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          tail -n 80 "$RUNNER_TEMP/ios-export.log" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build .app without code signing
         run: |
