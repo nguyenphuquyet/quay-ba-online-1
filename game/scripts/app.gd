@@ -824,12 +824,20 @@ func _run_net_smoke(target: String) -> void:
 			printerr("[NET-SMOKE] FAIL: thư viện nhạc rỗng")
 		else:
 			var tracks: Array = dj.playlist()
+			var load_started := Time.get_ticks_msec()
 			dj.play_track(str(tracks[0].get("id", "")))
 			var wait := 0.0
+			var next_sync := 0.0
 			while dj.is_loading_track() and wait < 40.0:
 				await get_tree().create_timer(0.25).timeout
 				wait += 0.25
-			print("[NET-SMOKE] dj playing=%s track=%s loading=%s" % [str(dj.playing), dj.current_track_id, str(dj.is_loading_track())])
+				# Giả lập echo đồng bộ 6 giây của server trong lúc đang tải:
+				# trước đây mỗi state này huỷ lượt tải và làm treo "Đang tải…".
+				if wait >= next_sync:
+					next_sync += 1.0
+					dj.call("_apply_state", dj.build_state())
+			var load_ms := Time.get_ticks_msec() - load_started
+			print("[NET-SMOKE] dj playing=%s track=%s loading=%s load_ms=%d" % [str(dj.playing), dj.current_track_id, str(dj.is_loading_track()), load_ms])
 			if not dj.playing:
 				ok = false
 				printerr("[NET-SMOKE] FAIL: không phát được nhạc")

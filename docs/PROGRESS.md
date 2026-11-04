@@ -113,6 +113,7 @@ Tài liệu: README, ARCHITECTURE, API, MULTIPLAYER, BUILD, MUSIC, ASSET_LICENSE
 | `Godot --headless --path game -- --server --port=7001 --allow-unverified-tickets` + `--net-smoke=7001` | **PASS** — players=1, roster=1, connected=true, di chuyển OK, interaction server broadcast OK |
 | Server + 2 client: `--net-smoke=7013 --tv-url=…` (owner) và `--net-smoke=7013 --watch-tv=…` | **PASS** — client 2 vào sau nhận đúng URL MP4 qua broadcast (`tv_received`), players=2, scene=2 |
 | `--net-smoke=7019 --reconnect-test` | **PASS** — giả lập mất kết nối, tự nối lại (`online=true joined=true`), server thấy peer mới join lại |
+| `--net-smoke=7014 --dj-test` + echo sync mỗi 1s trong lúc tải | **PASS** — tải xong MP3 (`load_ms=3810`), `playing=true`; state đồng bộ không còn huỷ lượt tải (trước đây treo “Đang tải…” vô hạn) |
 | `--net-smoke=7017 --owner-leave` | **PASS** — chủ phòng rời → client nhận `cli_room_closed`, server log “Phòng đã đóng, server sẵn sàng nhận phòng mới” |
 | Owner rớt mạng (kill client) + chờ grace | **PASS** — sau 30s server tự đóng phòng và reset |
 | VPS thật + ticket thật: `--net-smoke=serverbar1.nguyenphuquyet.online:3221:<ticket> --dj-test` | **PASS** — join phòng thật, players=1, `library=72`, tải + phát MP3 `playing=true`, `dj_state` broadcast |
