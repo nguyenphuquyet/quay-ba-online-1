@@ -45,7 +45,6 @@ var _video_seq := 0
 var _download: HTTPRequest
 var _sync_timer := 0.0
 var _ui_check := 0.0
-var _visual_check := 0.0
 
 
 class DevInfoScreen:
@@ -626,10 +625,6 @@ func _process(delta: float) -> void:
 	if _ui_check <= 0.0:
 		_ui_check = 0.2
 		_update_music_screen(false)
-	_visual_check -= delta
-	if _visual_check <= 0.0 and dev_viewport != null:
-		_visual_check = 0.1
-		dev_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
 	if bool(current_state.get("playing", false)) and str(current_state.get("kind", "")) == "video":
 		_sync_timer += delta
 		if _sync_timer >= 6.0 and Net.can_control("tv"):
