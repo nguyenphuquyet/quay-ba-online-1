@@ -50,12 +50,7 @@ var _visual_check := 0.0
 
 class DevInfoScreen:
 	extends Control
-
-	var phase := 0.0
-
-	func _process(delta: float) -> void:
-		phase += delta
-		queue_redraw()
+	## Bảng thông tin tĩnh: viewport chỉ render một lần (UPDATE_ONCE) để tiết kiệm GPU.
 
 	func _draw() -> void:
 		var w := size.x
@@ -68,10 +63,10 @@ class DevInfoScreen:
 			var t := float(i) / 30.0
 			var c := Color(0.07, 0.02, 0.13).lerp(Color(0.008, 0.012, 0.035), t)
 			draw_rect(Rect2(0.0, h * t, w, h / 30.0 + 1.0), c)
-		# Quầng sáng động.
+		# Quầng sáng tĩnh.
 		for k in 3:
-			var cx := w * (0.5 + 0.36 * sin(phase * 0.18 + float(k) * 2.1))
-			var cy := h * (0.42 + 0.26 * cos(phase * 0.24 + float(k) * 1.6))
+			var cx := w * (0.5 + 0.36 * sin(float(k) * 2.1))
+			var cy := h * (0.42 + 0.26 * cos(float(k) * 1.6))
 			draw_circle(Vector2(cx, cy), h * 0.5, Color(0.85, 0.14, 0.5, 0.04))
 		# Hai dải màu hai bên.
 		draw_rect(Rect2(0, 0, 10, h), Color(1.0, 0.3, 0.55, 0.85))
