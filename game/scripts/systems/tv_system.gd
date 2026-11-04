@@ -41,10 +41,9 @@ var _video_url := ""
 var _video_loading_url := ""
 var _video_seq := 0
 var _download: HTTPRequest
-var _elapsed := 0.0
+var _sync_timer := 0.0
 var _ui_check := 0.0
 var _visual_check := 0.0
-var _music_was_playing := false
 
 
 class DevInfoScreen:
@@ -345,7 +344,10 @@ func apply_state(state: Dictionary) -> void:
 	if kind == "video":
 		var url := str(state.get("url", ""))
 		if url != "":
-			_play_video(url, float(state.get("position", 0.0)), bool(state.get("playing", false)))
+			var position := float(state.get("position", 0.0))
+			if bool(state.get("playing", false)):
+				position += _elapsed_since(float(state.get("updated_at", 0.0)))
+			_play_video(url, position, bool(state.get("playing", false)))
 			return
 	_stop_video()
 	video_layer.visible = false
@@ -591,10 +593,25 @@ func _process(delta: float) -> void:
 		_visual_check = 0.1
 		dev_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
 	if bool(current_state.get("playing", false)) and str(current_state.get("kind", "")) == "video":
-		_elapsed += delta
+		_sync_timer += delta
+		if _sync_timer >= 6.0 and Net.can_control("tv"):
+			_sync_timer = 0.0
+			_publish_video_position()
 		if video_status != null and video_player != null and video_player.stream != null and _video_can_present():
 			video_status.text = "%s  •  %s" % [_format_time(video_player.stream_position), _format_time(_video_length())]
 			video_status.visible = true
+
+
+## Gửi vị trí video hiện tại định kỳ để người vào sau / client khác bám theo.
+func _publish_video_position() -> void:
+	if video_player == null or video_player.stream == null:
+		return
+	var state := current_state.duplicate(true)
+	state["position"] = video_player.stream_position
+	state["updated_at"] = Time.get_unix_time_from_system()
+	Net.send_tv(state)
+	if not Net.is_online():
+		apply_state(state)
 
 
 func _update_music_screen(force: bool) -> void:
@@ -606,7 +623,6 @@ func _update_music_screen(force: bool) -> void:
 	live_label.text = "●  LIVE FROM THE DJ BOOTH" if dj.playing else "❚❚  DJ BOOTH PAUSED"
 	live_label.add_theme_color_override("font_color", QBOTheme.ACCENT if dj.playing else QBOTheme.MUTED)
 	eq_bars.set("active", dj.playing)
-	_music_was_playing = dj.playing
 	var duration := dj.current_duration
 	var position := dj.playback_position()
 	time_label.text = "%s / %s" % [_format_time(position), _format_time(duration)]
@@ -652,3 +668,14 @@ func _exit_tree() -> void:
 func _format_time(seconds: float) -> String:
 	var total := int(maxf(0.0, seconds))
 	return "%02d:%02d" % [total / 60, total % 60]
+
+
+## Chênh lệch thời gian kể từ lúc state được tạo. Bỏ qua nếu đồng hồ hai máy
+## lệch quá nhiều (không thể tin `updated_at` xuyên máy).
+func _elapsed_since(updated_at: float) -> float:
+	if updated_at <= 0.0:
+		return 0.0
+	var delta := Time.get_unix_time_from_system() - updated_at
+	if delta < 0.0 or delta > 15.0:
+		return 0.0
+	return delta

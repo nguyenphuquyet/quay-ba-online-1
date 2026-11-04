@@ -36,7 +36,7 @@ Phiên bản: 0.1.0 (nền tảng MVP)
 - [x] Booth DJ tải thư viện từ `https://music.nguyenphuquyet.online/api/songs?take=1000`, lọc và chỉ giữ MP3/OGG/WAV (ẩn 25 bài M4A/AAC mà Godot không giải mã native). Hiện có 71 bài phát được.
 - [x] Tải + giải mã audio từ API, cache stream/cover; play/pause/next/prev/volume/seek; beat detection bằng spectrum analyzer; nhạc demo tổng hợp gốc khi API lỗi.
 - [x] 8 preset ánh sáng + intensity/speed/beat sync, LED động, moving head, strobe, đồng bộ server.
-- [x] TV state sync; TV lớn 20:9 phát màn nhạc DJ (bìa, tên bài, tiến trình, EQ) và video MP4/MOV/M4V/OGV trực tiếp; TV nhỏ hiển thị thông tin nhà phát triển.
+- [x] TV state sync; TV lớn 20:9 phát màn nhạc DJ (bìa, tên bài, tiến trình, EQ) và video MP4/MOV/M4V/OGV trực tiếp; TV nhỏ hiển thị thông tin nhà phát triển. Vị trí video được gửi lại mỗi 6 giây; chênh lệch đồng hồ giữa hai máy >15 giây bị bỏ qua thay vì seek sai.
 - [x] Video MP4/H.264 dùng GDExtension `claytercek/godot-native-video` v0.4.0 (`native_video`), tải về cache rồi phát bằng `VideoStreamPlayer`; giữ tỉ lệ 16:9 trên màn 20:9.
 - [x] Máy tính trong bar: tab NHẠC/DJ (playlist API, transport, volume, cover) và tab TV SÂN KHẤU (dán link MP4 trực tiếp, play/pause, volume, trở về màn nhạc).
 - [x] Không còn WebView/YouTube/iframe: đã xoá addon `qbo_webview_*`, `scripts/browser/*`, `web_renderer.gd` và toàn bộ luồng nhập URL web.
@@ -98,6 +98,7 @@ Tài liệu: README, ARCHITECTURE, API, MULTIPLAYER, BUILD, ASSET_LICENSES, PROG
 7. **Animation** là procedural + GLB clip, chất lượng thấp hơn asset authored.
 8. **API nhạc** phụ thuộc dịch vụ ngoài; nếu API lỗi, booth DJ tự lùi về track demo tổng hợp.
 9. **Video cache**: mỗi tệp giới hạn 300 MB, lưu ở `user://tv_video_cache`; bảng TV đã có nút xoá cache và hiển thị dung lượng, nhưng chưa tự dọn khi vượt ngưỡng.
+10. **Đồng bộ theo đồng hồ máy**: `updated_at` dùng giờ hệ thống của client gửi; nếu hai máy lệch >15 giây thì phần bù thời gian bị bỏ qua và chỉ còn sync định kỳ 6 giây. Chưa có server-authoritative clock.
 
 ## 5. Lệnh kiểm thử đã chạy và kết quả
 

@@ -478,7 +478,7 @@ func _apply_state(state: Dictionary) -> void:
 	var target_position := float(state.get("position", 0.0))
 	var updated_at := float(state.get("updated_at", 0.0))
 	if target_playing and updated_at > 0.0:
-		target_position += clampf(Time.get_unix_time_from_system() - updated_at, 0.0, 3600.0)
+		target_position += _elapsed_since(updated_at)
 	volume = clampf(float(state.get("volume", volume)), 0.0, 1.0)
 	music.volume_db = linear_to_db(maxf(volume, 0.001))
 	var same_track := current_track_id == track_id and music.stream != null
@@ -580,6 +580,16 @@ func _stream_length() -> float:
 	if music == null or music.stream == null:
 		return 0.0
 	return music.stream.get_length()
+
+
+## Chênh lệch kể từ lúc state được tạo; bỏ qua khi đồng hồ hai máy lệch nhiều.
+func _elapsed_since(updated_at: float) -> float:
+	if updated_at <= 0.0:
+		return 0.0
+	var delta := Time.get_unix_time_from_system() - updated_at
+	if delta < 0.0 or delta > 15.0:
+		return 0.0
+	return delta
 
 
 func _on_finished() -> void:
