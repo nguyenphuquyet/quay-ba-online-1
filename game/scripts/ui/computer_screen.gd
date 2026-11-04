@@ -429,7 +429,8 @@ func _refresh_tv_state() -> void:
 	if _tv_state == null:
 		return
 	var state: Dictionary = Net.tv_state
-	if state.is_empty() or str(state.get("kind", "")) != "video":
+	var is_video := not state.is_empty() and str(state.get("kind", "")) == "video"
+	if not is_video:
 		_tv_state.text = "TV lớn đang hiển thị màn nhạc DJ."
 		_tv_provider.text = "MP4/MOV: addon native_video"
 	else:
@@ -439,6 +440,8 @@ func _refresh_tv_state() -> void:
 			str(state.get("by", "—")),
 		]
 		_tv_provider.text = "%s  •  %s" % [str(state.get("url", "")), "đang phát" if bool(state.get("playing", false)) else "tạm dừng"]
+	_tv_volume.set_value_no_signal(float(state.get("volume", 1.0)))
+	_tv_play.text = "Tiếp tục" if is_video and not bool(state.get("playing", false)) else "Tạm dừng"
 	_refresh_tv_cache()
 	_refresh_tv_permissions()
 
@@ -477,11 +480,12 @@ func _refresh_tv_permissions() -> void:
 	if _tv_permission == null:
 		return
 	var can := Net.can_control("tv")
+	var is_video := str(Net.tv_state.get("kind", "")) == "video"
 	_tv_permission.text = "Bạn có quyền điều khiển TV." if can else "Bạn chưa có quyền điều khiển TV — chỉ chủ phòng hoặc người được cấp quyền."
 	_tv_permission.add_theme_color_override("font_color", QBOTheme.SUCCESS if can else QBOTheme.GOLD)
 	_tv_publish.disabled = not can
-	_tv_play.disabled = not can
-	_tv_stop.disabled = not can
+	_tv_play.disabled = not can or not is_video
+	_tv_stop.disabled = not can or not is_video
 	_tv_volume.editable = can
 
 
