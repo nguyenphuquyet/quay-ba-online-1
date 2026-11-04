@@ -236,6 +236,32 @@ func _run_smoke_test() -> void:
 				await get_tree().create_timer(0.2).timeout
 				if player.seated:
 					failures.append("không đứng dậy được")
+	# URL guard: chặn SSRF (IPv4/IPv6/credentials) và chỉ nhận media trực tiếp.
+	var blocked := [
+		"http://localhost/x.mp3",
+		"http://127.0.0.1/x.mp3",
+		"http://10.1.2.3/x.mp4",
+		"http://192.168.0.5/x.mp3",
+		"http://169.254.169.254/latest/meta-data",
+		"http://[::1]/x.mp3",
+		"http://[fc00::1]/x.mp3",
+		"http://user:pass@127.0.0.1/x.mp3",
+	]
+	for candidate in blocked:
+		if bool(QBOUrlGuard.validate(candidate).get("ok", false)):
+			failures.append("URL guard cho phép URL nội bộ: " + candidate)
+	if QBOUrlGuard.is_supported_audio("file:///etc/passwd"):
+		failures.append("URL guard nhận file:// là audio")
+	var audio_check := QBOUrlGuard.validate("https://music.nguyenphuquyet.online/media/audio/a.mp3")
+	if str(audio_check.get("kind", "")) != "audio" or not bool(audio_check.get("trusted", false)):
+		failures.append("URL guard không nhận diện audio API")
+	if str(QBOUrlGuard.validate("https://example.com/clip.mp4").get("kind", "")) != "video":
+		failures.append("URL guard không nhận diện video MP4")
+	var joined := QBOUrlGuard.absolute_url("/media/audio/a.mp3", "https://music.nguyenphuquyet.online")
+	if joined != "https://music.nguyenphuquyet.online/media/audio/a.mp3":
+		failures.append("absolute_url ghép sai: " + joined)
+	else:
+		print("[SMOKE] URL guard OK (%d URL nội bộ bị chặn)" % blocked.size())
 	var elapsed := Time.get_ticks_msec() - started
 	if failures.is_empty():
 		print("[SMOKE] OK trong %d ms" % elapsed)

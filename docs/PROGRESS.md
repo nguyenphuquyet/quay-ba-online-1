@@ -42,7 +42,7 @@ Phiên bản: 0.1.0 (nền tảng MVP)
 - [x] Không còn WebView/YouTube/iframe: đã xoá addon `qbo_webview_*`, `scripts/browser/*`, `web_renderer.gd` và toàn bộ luồng nhập URL web.
 
 ### Phase 6 — Security & URL guard
-- [x] `QBOUrlGuard`: chỉ http/https, chặn localhost/private/metadata (SSRF), phân loại audio/video trực tiếp.
+- [x] `QBOUrlGuard`: chỉ http/https, chặn localhost/private/metadata (SSRF) gồm IPv4, IPv6 `[::1]`/`fc00::`/`fe80::`, URL có `user:pass@`; phân loại audio/video trực tiếp.
 - [x] `absolute_url()` ghép URL tương đối của API (`/media/...`) với host `music.nguyenphuquyet.online`.
 - [x] Chỉ nhận audio `.mp3/.ogg/.oga/.wav` và video `.mp4/.mov/.m4v/.ogv`; từ chối mọi URL trang web.
 
@@ -105,7 +105,7 @@ Tài liệu: README, ARCHITECTURE, API, MULTIPLAYER, BUILD, MUSIC, ASSET_LICENSE
 | Lệnh | Kết quả |
 | --- | --- |
 | `Godot --headless --path game --editor --quit` | Import project OK, class cache OK, không còn lỗi GDExtension |
-| `Godot --headless --path game --fixed-fps 60 -- --smoke` | **PASS** — interactables=27, players=1, 5 moving heads, demo track 12s/32kHz, TV music screen ready, di chuyển OK, ngồi/đứng OK |
+| `Godot --headless --path game --fixed-fps 60 -- --smoke` | **PASS** — interactables=27, players=1, 5 moving heads, demo track 12s/32kHz, TV music screen ready, di chuyển OK, ngồi/đứng OK, URL guard chặn 8 URL nội bộ |
 | `Godot --headless --path game -- --media-test` | **PASS** — API trả 71 bài phát được; audio MP3 tải/giải mã OK (373.5s, playing); TV tải/giải mã MP4 OK (NativeVideoStream 10.00s); cache video xoá sạch qua `clear_video_cache()` |
 | `Godot --headless --path game -- --ui-test` | **PASS** — overlay máy tính, DJ và TV mở/đóng không lỗi runtime |
 | `Godot --path game -- --screenshot` | **PASS** — `tv_ui.png` 1280×576 (TV lớn) và `tv_dev.png` 1280×720 (TV nhỏ), 6 ảnh QA sân khấu/bar/VIP |

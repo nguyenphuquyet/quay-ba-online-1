@@ -36,10 +36,17 @@ static func validate(raw_url: String) -> Dictionary:
 		var idx := rest.find(separator)
 		if idx >= 0 and idx < host_end:
 			host_end = idx
-	var host_port := rest.substr(0, host_end).to_lower()
-	var host := host_port
-	if host_port.contains(":"):
-		host = host_port.split(":")[0]
+	var authority := rest.substr(0, host_end).to_lower()
+	# Bỏ user:pass@ nếu có; chỉ phần sau @ mới là host thật.
+	if authority.contains("@"):
+		authority = authority.get_slice("@", 1)
+	var host := authority
+	if host.begins_with("["):
+		var bracket := host.find("]")
+		if bracket >= 0:
+			host = host.substr(0, bracket + 1)
+	elif host.contains(":"):
+		host = host.split(":")[0]
 	if host == "":
 		return _fail("URL thiếu tên miền.")
 	if _is_private_host(host):
@@ -94,13 +101,18 @@ static func absolute_url(raw_url: String, base_url: String) -> String:
 
 
 static func _is_private_host(host: String) -> bool:
-	if host == "localhost" or host.ends_with(".localhost") or host.ends_with(".local"):
+	var bare := host.trim_prefix("[").trim_suffix("]")
+	if bare == "localhost" or bare.ends_with(".localhost") or bare.ends_with(".local"):
 		return true
-	if host == "metadata.google.internal" or host == "metadata":
+	if bare == "metadata.google.internal" or bare == "metadata":
 		return true
-	if host == "0.0.0.0" or host == "::1" or host == "[::1]":
+	if bare == "0.0.0.0" or bare == "::1" or bare == "::" or bare == "0:0:0:0:0:0:0:1":
 		return true
-	var parts := host.split(".")
+	# IPv6 unique-local (fc00::/7), link-local (fe80::/10) và địa chỉ mapped.
+	if bare.contains(":"):
+		if bare.begins_with("fc") or bare.begins_with("fd") or bare.begins_with("fe80") or bare.begins_with("::ffff:"):
+			return true
+	var parts := bare.split(".")
 	if parts.size() == 4:
 		for part in parts:
 			if not part.is_valid_int():
