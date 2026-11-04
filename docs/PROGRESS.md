@@ -55,7 +55,7 @@ Phiên bản: 0.1.0 (nền tảng MVP)
 - [ ] Voice chat WebRTC/SFU: chưa triển khai.
 - [ ] Chat lịch sử/persistence: chưa (chat hiện realtime qua ENet).
 - [ ] Docker compose: file có, chưa chạy do máy không có Docker.
-- [x] MySQL migration thật: migration `20261103120000_init` đã chạy trên **Aiven MySQL 8**; backend deploy Vercel tại https://quay-bar-online-server.vercel.app (`/api/health` → `database: up`, register/login đã test).
+- [x] MySQL migration thật: migration `20261103120000_init` đã chạy trên **Aiven MySQL 8**; backend deploy Vercel tại https://quay-bar-online-server.vercel.app (`/api/health` → `database: up`, register/login đã test). Vercel tự deploy khi push `main` (đã xác nhận route `rooms/[code]/heartbeat` hoạt động trên production).
 - [x] Dedicated game server public: đã deploy lên VPS `18.138.228.21` (UDP 3221, heartbeat `serverbar1.nguyenphuquyet.online:3221`). Backend vẫn ở Vercel; các thay đổi phòng tạm thời/reconnect cần deploy backend mới có hiệu lực đầy đủ.
 
 ## 3. File đã tạo/chỉnh sửa chính
@@ -114,6 +114,9 @@ Tài liệu: README, ARCHITECTURE, API, MULTIPLAYER, BUILD, MUSIC, ASSET_LICENSE
 | `--net-smoke=7019 --reconnect-test` | **PASS** — giả lập mất kết nối, tự nối lại (`online=true joined=true`), server thấy peer mới join lại |
 | `--net-smoke=7017 --owner-leave` | **PASS** — chủ phòng rời → client nhận `cli_room_closed`, server log “Phòng đã đóng, server sẵn sàng nhận phòng mới” |
 | Owner rớt mạng (kill client) + chờ grace | **PASS** — sau 30s server tự đóng phòng và reset |
+| VPS thật + ticket thật: `--net-smoke=serverbar1.nguyenphuquyet.online:3221:<ticket> --dj-test` | **PASS** — join phòng thật, players=1, `library=72`, tải + phát MP3 `playing=true`, `dj_state` broadcast |
+| Chủ phòng rời phòng trên VPS | **PASS** — server log “Phòng đã đóng…”, backend room `closed`, members=0 |
+| API production: create → join → heartbeat → owner leave → delete | **PASS** — `leave` trả `{ok:true, closed:true}`, room `closed`, members=0; `heartbeat` 200 |
 | `prisma validate` | **PASS** |
 | `prisma generate` | **PASS** (Prisma 6.19.3) |
 | `tsc --noEmit` | **PASS** |

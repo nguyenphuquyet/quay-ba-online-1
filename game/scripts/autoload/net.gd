@@ -69,6 +69,8 @@ const OWNER_GRACE_MS := 30_000
 const MAX_RECONNECT_ATTEMPTS := 5
 const PING_INTERVAL := 3.0
 const PING_TIMEOUT := 12.0
+## Nếu server không trả cli_welcome (mạng lỗi / client-server lệch phiên bản).
+const JOIN_TIMEOUT_MS := 15_000
 
 ## user_id -> { info, expires } để khôi phục người chơi khi họ kết nối lại.
 var _away: Dictionary = {}
@@ -79,6 +81,7 @@ var _ping_timer := 0.0
 var _last_pong_ms := 0
 ## Đã bị kick / phòng đóng -> không tự reconnect.
 var _room_ended := false
+var _join_deadline_ms := 0
 
 
 func _ready() -> void:
@@ -96,7 +99,15 @@ func _process(delta: float) -> void:
 			_owner_deadline_ms = 0
 			_close_room("Chủ phòng đã rời phòng. Phòng đã đóng.")
 		return
-	if mode != AppConfig.Mode.CLIENT or not _joined or _reconnecting:
+	if mode != AppConfig.Mode.CLIENT:
+		return
+	if _join_deadline_ms > 0 and not _joined:
+		if Time.get_ticks_msec() >= _join_deadline_ms:
+			_join_deadline_ms = 0
+			join_failed.emit("Không vào được phòng. Kiểm tra mạng hoặc phiên bản client/server.")
+			_teardown_peer()
+		return
+	if not _joined or _reconnecting:
 		return
 	_ping_timer -= delta
 	if _ping_timer <= 0.0:
@@ -169,6 +180,7 @@ func connect_to_room(host: String, port: int, ticket: String) -> bool:
 		_reconnect_attempts = 0
 		if not GameState.room.is_empty():
 			room = GameState.room.duplicate(true)
+		_join_deadline_ms = Time.get_ticks_msec() + JOIN_TIMEOUT_MS
 	_room_ended = false
 	_joined = false
 	_last_pong_ms = 0
@@ -365,6 +377,7 @@ func cli_welcome(roster_in: Dictionary, settings_in: Dictionary, owner: int, lig
 	tv_state = tv.duplicate(true)
 	_joined = true
 	_rebuild_roster()
+	_join_deadline_ms = 0
 	_last_pong_ms = Time.get_ticks_msec()
 	_ping_timer = 0.0
 	join_succeeded.emit(room)
@@ -957,6 +970,7 @@ func stop() -> void:
 	_reconnecting = false
 	_reconnect_attempts = 0
 	_room_ended = false
+	_join_deadline_ms = 0
 	_ping_timer = 0.0
 	_last_pong_ms = 0
 	_endpoint_host = ""
