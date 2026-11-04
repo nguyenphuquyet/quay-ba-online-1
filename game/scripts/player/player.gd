@@ -144,12 +144,6 @@ func _ui_blocks_input() -> bool:
 	return bool(App.ui.call("is_input_blocked"))
 
 
-func _web_typing() -> bool:
-	if App.ui == null or not App.ui.has_method("is_web_typing"):
-		return false
-	return bool(App.ui.call("is_web_typing"))
-
-
 func _ui_call(method: String, value: Variant = null) -> void:
 	if App.ui == null:
 		return
@@ -335,7 +329,7 @@ func _apply_camera_mode() -> void:
 
 func _read_move_input() -> Vector2:
 	## Bàn phím (WASD/phím mũi tên) + joystick cảm ứng được cộng gộp.
-	if not _controls_enabled or _ui_blocks_input() or _web_typing():
+	if not _controls_enabled or _ui_blocks_input():
 		return Vector2.ZERO
 	var keyboard := Vector2(
 		Input.get_action_strength("move_right") - Input.get_action_strength("move_left"),

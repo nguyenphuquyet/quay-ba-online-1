@@ -33,7 +33,6 @@ var pending_port := 0
 var _overlay_open := false
 var _chat_focused := false
 var _hud_blocked := false
-var _web_typing := false
 var _toast_box: VBoxContainer
 var _menu_background: Control
 
@@ -228,16 +227,6 @@ func is_input_blocked() -> bool:
 
 func set_hud_blocked(value: bool) -> void:
 	_hud_blocked = value
-
-
-## Đang gõ bàn phím vào trang web trên TV: chặn di chuyển/nhảy nhưng vẫn giữ
-## chuột ở chế độ captured để ngắm màn hình.
-func set_web_typing(value: bool) -> void:
-	_web_typing = value
-
-
-func is_web_typing() -> bool:
-	return _web_typing
 
 
 func is_overlay_open() -> bool:

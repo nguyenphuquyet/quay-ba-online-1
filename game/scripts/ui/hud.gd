@@ -192,16 +192,6 @@ func _build_quick_menu() -> void:
 
 
 func _open_stage_tv() -> void:
-	## Android: mở WebView native đúng video cả phòng đang xem. iOS/PC thiếu
-	## trình duyệt nhúng: mở bằng ứng dụng hệ thống. PC có Chromium: mở bảng TV.
-	var tv = App.world.tv if App.world != null else null
-	if tv != null:
-		if tv.native_player_available() and tv.open_native_player():
-			return
-		if not tv.web_available():
-			var watch := str(tv.current_state.get("url", ""))
-			if watch.begins_with("http") and OS.shell_open(watch) == OK:
-				return
 	App.open_computer("tv")
 
 
@@ -553,9 +543,6 @@ func _input(event: InputEvent) -> void:
 	if not visible:
 		return
 	if ui.call("is_overlay_open"):
-		return
-	# Bàn phím đang gửi vào trang web trên TV.
-	if ui.has_method("is_web_typing") and bool(ui.call("is_web_typing")):
 		return
 	if event.is_action_pressed("chat") and not _chat_open:
 		_open_chat()

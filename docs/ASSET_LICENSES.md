@@ -7,7 +7,7 @@ Cập nhật: 2026-11-03
 1. Không đưa vào repo tài nguyên không rõ nguồn gốc hoặc không cho phép dùng thương mại.
 2. Mỗi asset bên thứ ba phải ghi: tên, tác giả, URL nguồn, giấy phép, ngày tải, đường dẫn trong repo.
 3. Ưu tiên CC0 / CC-BY / giấy phép cho phép dùng trong game thương mại.
-4. Không dùng nhạc thương mại, soundtrack phim, hay nội dung YouTube tải xuống.
+4. Không dùng nhạc thương mại, soundtrack phim, hay nội dung YouTube tải xuống; thư viện nhạc lấy từ API của chủ dự án.
 5. Không commit file > 20 MB trực tiếp; dùng Git LFS hoặc script tải trong `tools/asset_import/`.
 6. Không để đường dẫn asset chết: mọi `res://` phải tồn tại và được import bởi Godot.
 
@@ -60,7 +60,7 @@ Chỉ dùng sau khi kiểm tra giấy phép và ghi lại vào bảng dưới:
 
 - Track demo trong game là bản tổng hợp gốc, an toàn để phân phối.
 - Người chơi có thể tải nhạc từ URL **nếu họ có quyền sử dụng**; game không đóng gói nhạc đó và không lưu trữ lâu dài.
-- Không tải/nhúng nội dung YouTube trái chính sách; chỉ dùng chế độ nhúng chính thức trên nền tảng có WebView.
+- Nhạc phát từ thư viện API `music.nguyenphuquyet.online`; không nhúng/tải nội dung YouTube hay vượt DRM dưới bất kỳ hình thức nào.
 - Không vượt DRM dưới bất kỳ hình thức nào.
 
 ## 6. Giấy phép mã nguồn

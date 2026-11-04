@@ -1,25 +1,27 @@
 class_name QBOUrlGuard
 extends RefCounted
-## Kiểm tra URL trước khi mở trên TV/Browser: chặn SSRF, javascript:, file:…
-## Trả về { ok, url, host, kind, trusted, reason }.
+## Kiểm tra URL media trước khi tải về máy.
+##
+## TV lớn chỉ nhận video trực tiếp (MP4/MOV/M4V/Ogg Theora), booth DJ chỉ nhận
+## audio trực tiếp (MP3/OGG/WAV). Không còn luồng nhúng website/YouTube.
 
 const ALLOWED_SCHEMES := ["http", "https"]
-const TRUSTED_HOSTS := [
-	"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com",
-	"vimeo.com", "player.vimeo.com", "soundcloud.com", "twitch.tv", "www.twitch.tv",
-	"bilibili.com", "www.bilibili.com", "spotify.com", "open.spotify.com",
-	"archive.org", "commons.wikimedia.org",
-]
 const AUDIO_EXTENSIONS := [".mp3", ".ogg", ".oga", ".wav"]
-const VIDEO_EXTENSIONS := [".ogv"]
+const VIDEO_EXTENSIONS := [".mp4", ".mov", ".m4v", ".ogv"]
+## API nhạc của quán; vẫn cho phép host khác nếu URL là media trực tiếp.
+const TRUSTED_HOSTS := [
+	"music.nguyenphuquyet.online",
+	"archive.org",
+	"commons.wikimedia.org",
+]
 
 
 static func validate(raw_url: String) -> Dictionary:
 	var url := raw_url.strip_edges()
 	if url == "":
 		return _fail("URL trống.")
-	if url.length() > 500:
-		return _fail("URL quá dài (tối đa 500 ký tự).")
+	if url.length() > 1000:
+		return _fail("URL quá dài (tối đa 1000 ký tự).")
 	if not (url.begins_with("http://") or url.begins_with("https://")):
 		url = "https://" + url
 	var scheme_end := url.find("://")
@@ -43,18 +45,16 @@ static func validate(raw_url: String) -> Dictionary:
 	if _is_private_host(host):
 		return _fail("Không cho phép truy cập địa chỉ nội bộ/localhost (chống SSRF).")
 	var lower := url.to_lower()
-	var kind := "web"
+	var kind := "other"
 	for ext in AUDIO_EXTENSIONS:
 		if lower.contains(ext):
 			kind = "audio"
 			break
-	if kind == "web":
+	if kind == "other":
 		for ext in VIDEO_EXTENSIONS:
 			if lower.contains(ext):
 				kind = "video"
 				break
-	if _is_youtube(host):
-		kind = "youtube"
 	var trusted := false
 	for allowed in TRUSTED_HOSTS:
 		if host == allowed or host.ends_with("." + allowed):
@@ -70,45 +70,27 @@ static func validate(raw_url: String) -> Dictionary:
 	}
 
 
-static func youtube_video_id(url: String) -> String:
-	var raw := url.strip_edges()
-	# Cho phép dán thẳng mã video 11 ký tự.
-	if raw.length() == 11 and not raw.contains("/") and not raw.contains(".") and not raw.contains(" "):
-		return raw
-	var parsed := validate(raw)
-	if not parsed["ok"]:
+static func is_supported_audio(url: String) -> bool:
+	return validate(url).get("kind", "") == "audio"
+
+
+static func is_supported_video(url: String) -> bool:
+	return validate(url).get("kind", "") == "video"
+
+
+## Ghép URL tương đối từ API với host gốc. API trả `/media/audio/...`.
+static func absolute_url(raw_url: String, base_url: String) -> String:
+	var value := raw_url.strip_edges()
+	if value == "":
 		return ""
-	var host := str(parsed["host"])
-	var path := raw.split("?")[0].split("#")[0]
-	if host == "youtu.be":
-		var tail := path.split("youtu.be/")
-		if tail.size() > 1:
-			return _clean_youtube_id(tail[1].split("/")[0])
-	for marker in ["/embed/", "/shorts/", "/live/", "/v/"]:
-		if marker in path:
-			return _clean_youtube_id(path.split(marker)[1].split("/")[0])
-	if raw.contains("v="):
-		return _clean_youtube_id(raw.split("v=")[1].split("&")[0])
-	return ""
-
-
-static func _clean_youtube_id(value: String) -> String:
-	var id := value.strip_edges()
-	# ID YouTube gồm 11 ký tự [A-Za-z0-9_-].
-	var result := ""
-	for i in id.length():
-		var ch := id[i]
-		if ch.is_valid_int() or (ch >= "a" and ch <= "z") or (ch >= "A" and ch <= "Z") or ch == "-" or ch == "_":
-			result += ch
-			if result.length() == 11:
-				break
-		else:
-			break
-	return result
-
-
-static func _is_youtube(host: String) -> bool:
-	return host == "youtu.be" or host.ends_with("youtube.com")
+	if value.begins_with("http://") or value.begins_with("https://"):
+		return value
+	var base := base_url.strip_edges().rstrip("/")
+	if value.begins_with("//"):
+		return "https:" + value
+	if value.begins_with("/"):
+		return base + value
+	return base + "/" + value
 
 
 static func _is_private_host(host: String) -> bool:

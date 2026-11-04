@@ -104,7 +104,7 @@ Tải artifact `QuayBarOnline-unsigned-ipa`, giải nén được file IPA.
 - Chứng chỉ Apple Developer + provisioning profile, hoặc
 - Thiết bị jailbreak / TrollStore.
 
-Ngoài ra phần TV/YouTube dùng Chromium + CDP chỉ chạy trên desktop; trên iOS màn hình TV sẽ báo thiếu backend browser thay vì phát video.
+Video MP4/MOV dùng addon `native_video` (chỉ có binary Windows/macOS/Linux). Trên iOS/Android, TV chỉ phát được OGV/Theora hoặc hiển thị thông báo thiếu backend video; không còn WebView/YouTube.
 
 #### Build thủ công trên macOS
 

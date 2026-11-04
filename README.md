@@ -97,10 +97,10 @@ Chạy thủ công: **Actions → chọn workflow → Run workflow**. Các workf
 - Nhân vật 3D GLB có **89 xương, 35 animation** (idle/walk/run/jump/sit/emote…), tự chuẩn hóa chiều cao và khớp clip theo tên; chuyển first/third person kiểu GTA V. Model "Low Poly Girl" (CC-BY 4.0) — xem [game/assets/models/characters/README.md](game/assets/models/characters/README.md).
 - Interaction component tái sử dụng: ghế, cửa, thang máy, bar, DJ booth, lighting console, máy tính, TV.
 - Multiplayer ENet dedicated server: server authority cho di chuyển (kiểm tra tốc độ), quyền DJ/đèn/TV, chat, interaction, reconnect.
-- DJ: playlist, play/pause/next/prev, volume, beat detection từ spectrum analyzer, nhạc demo **tổng hợp gốc** (124 BPM) + tải MP3/OGG/WAV từ URL hợp lệ.
+- DJ: thư viện nhạc tải từ **music.nguyenphuquyet.online/api/songs**, play/pause/next/prev, volume, beat detection từ spectrum analyzer, nhạc demo **tổng hợp gốc** (124 BPM); phát MP3/OGG/WAV, tự ẩn M4A/AAC.
 - Ánh sáng: 8 preset (Chill, Lounge, Party, EDM, Cyberpunk, Chinese Neon, VIP, Blackout), cường độ/tốc độ/beat sync, đồng bộ qua server.
-- TV/LED: đồng bộ URL, play/pause, thời gian, âm lượng; phát native video `.ogv`; hiển thị trạng thái trung thực khi thiếu WebView nhúng.
-- Máy tính trong bar: desktop UI, thanh địa chỉ, back/forward/reload/home, history, allowlist/denylist, chặn SSRF, chuyển URL lên TV.
+- TV/LED: TV lớn 20:9 ở giữa sân khấu phát màn nhạc DJ và video MP4/MOV trực tiếp qua addon `native_video`; TV nhỏ 16:9 bên phải hiển thị thông tin nhà phát triển. Trạng thái video đồng bộ cho cả phòng.
+- Máy tính trong bar: điều khiển booth DJ, chọn bài từ thư viện API, phát video MP4 trực tiếp lên TV lớn, cấp quyền DJ/TV.
 - Ứng dụng backend: đăng ký/đăng nhập JWT + refresh rotation, hồ sơ, phòng, bạn bè, inventory, report, game ticket, registry server, moderation cơ bản, rate limit, validation zod, logging JSON.
 - UI PC/mobile riêng, theme dark/glass/neon, joystick và nút cảm ứng.
 
@@ -111,7 +111,7 @@ game/          Godot client + dedicated server mode
 server/        Next.js App Router API + Prisma/MySQL
 multiplayer/   Dockerfile & công cụ chạy dedicated server
 tools/         Script kiểm tra/asset import nội bộ
-docs/          ARCHITECTURE, API, MULTIPLAYER, BUILD, BROWSER, ASSET_LICENSES
+docs/          ARCHITECTURE, API, MULTIPLAYER, BUILD, ASSET_LICENSES
 ```
 
 ## Kiểm thử đã chạy
@@ -119,6 +119,12 @@ docs/          ARCHITECTURE, API, MULTIPLAYER, BUILD, BROWSER, ASSET_LICENSES
 ```bash
 # Godot: parse/import project và smoke test offline (world, player, DJ, TV, seat)
 tools/godot/Godot_v4.7.2-stable_win64_console.exe --headless --path game --fixed-fps 60 -- --smoke
+
+# Godot: kiểm tra thư viện API, giải mã MP3 và tải/giải mã MP4 cho TV lớn
+tools/godot/Godot_v4.7.2-stable_win64_console.exe --headless --path game -- --media-test
+
+# Godot: mở overlay DJ + máy tính + TV để bắt lỗi runtime UI
+tools/godot/Godot_v4.7.2-stable_win64_console.exe --headless --path game -- --ui-test
 
 # Godot: 2 tiến trình — dedicated server + client, kiểm tra authority, spawn, interaction
 godot --headless --path game -- --server --port=7001 --allow-unverified-tickets
@@ -136,7 +142,6 @@ Kết quả và giới hạn: xem [PROGRESS.md](PROGRESS.md).
 - [docs/API.md](docs/API.md)
 - [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md)
 - [docs/BUILD.md](docs/BUILD.md)
-- [docs/BROWSER.md](docs/BROWSER.md)
 - [docs/ASSET_LICENSES.md](docs/ASSET_LICENSES.md)
 
 ## Giấy phép tài nguyên

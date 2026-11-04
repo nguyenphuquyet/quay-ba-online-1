@@ -1,45 +1,56 @@
 extends Control
-## Computer Desktop — máy tính trong bar: Lotus Browser, TV/LED và thông tin.
-## Đây là URL dispatcher thật + bridge tới BrowserProvider; không giả lập render web.
+## Máy tính trong bar — trung tâm điều khiển nhạc DJ và TV lớn sân khấu.
+## Không còn trình duyệt nhúng/YouTube: TV lớn chỉ phát nhạc từ API hoặc MP4 trực tiếp.
 
 var ui: CanvasLayer
 var params: Dictionary = {}
 
-var provider: QBOBrowserProvider
 var _window: PanelContainer
 var _tabbar: Control
 var _tabs: Dictionary = {}
 var _content: Dictionary = {}
-var _address: LineEdit
-var _browser_status: Label
-var _page: VBoxContainer
-var _page_scroll: ScrollContainer
-var _history: Array = []
-var _history_index := -1
-var _web_surface_enabled := false
-var _webview_texture: TextureRect
-var _current_url := "qbo://home"
 var _fullscreen := false
+
+var _dj_title: Label
+var _dj_artist: Label
+var _dj_status: Label
+var _dj_play: Button
+var _dj_volume: HSlider
+var _dj_library: Label
+var _dj_playlist: VBoxContainer
+var _dj_signature := ""
+var _dj_cover: TextureRect
+var _dj_cover_url := ""
 
 var _tv_url: LineEdit
 var _tv_state: Label
-var _tv_volume: HSlider
-var _tv_publish: Button
-var _tv_play: Button
 var _tv_provider: Label
+var _tv_volume: HSlider
+var _tv_play: Button
+var _tv_publish: Button
+var _tv_stop: Button
 var _tv_permission: Label
+
+var _ui_timer := 0.0
 
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	provider = QBOBrowserFactory.create()
 	_build()
-	var tab := str(params.get("tab", "browser"))
-	_switch_tab(tab if _tabs.has(tab) else "browser")
-	if tab == "tv":
-		_refresh_tv_state()
+	var tab := str(params.get("tab", "music"))
+	if tab == "browser":
+		tab = "music"
+	_switch_tab(tab if _tabs.has(tab) else "music")
+	Net.dj_received.connect(func(_action, _payload): _refresh_dj())
 	Net.tv_received.connect(func(_s): _refresh_tv_state())
-	Net.room_settings_received.connect(func(_s): _refresh_tv_permissions())
+	Net.room_settings_received.connect(func(_s):
+		_refresh_dj_permission()
+		_refresh_tv_permissions()
+	)
+	if App.world != null and App.world.dj != null:
+		App.world.dj.library_changed.connect(_on_library_changed)
+	_refresh_dj()
+	_refresh_tv_state()
 
 
 func _build() -> void:
@@ -51,9 +62,6 @@ func _build() -> void:
 
 	_window = PanelContainer.new()
 	if AppConfig.is_mobile:
-		# Trên điện thoại, cửa sổ cố định 1440×860 sẽ tràn ra ngoài màn hình
-		# ngang (chiều cao canvas chỉ ~720). Dùng gần full màn hình thay vì cắt mất
-		# ô nhập link ở mép dưới.
 		_window.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		_window.offset_left = 8
 		_window.offset_top = 8
@@ -61,9 +69,8 @@ func _build() -> void:
 		_window.offset_bottom = -8
 	else:
 		_window.set_anchors_preset(Control.PRESET_CENTER)
-		# Cửa sổ lớn hơn hẳn để trang web đọc được; nút ⛶ còn phóng to gần kín màn hình.
-		_window.offset_left = -720
-		_window.offset_right = 720
+		_window.offset_left = -700
+		_window.offset_right = 700
 		_window.offset_top = -430
 		_window.offset_bottom = 430
 	_window.add_theme_stylebox_override("panel", QBOTheme.panel_style(Color(0.04, 0.032, 0.05, 0.98), 16, Color(0.85, 0.7, 0.43, 0.35)))
@@ -74,7 +81,6 @@ func _build() -> void:
 	var titlebar := PanelContainer.new()
 	titlebar.name = "TitleBar"
 	var tb_style := QBOTheme.panel_style(Color(0.07, 0.05, 0.08, 1.0), 10)
-	# Thanh tiêu đề mỏng: mặc định panel_style đệm 24/22px làm nó cao gần 100px.
 	tb_style.content_margin_left = 14
 	tb_style.content_margin_right = 14
 	tb_style.content_margin_top = 4
@@ -86,9 +92,8 @@ func _build() -> void:
 	titlebar.add_child(trow)
 	for color in [Color(1, 0.35, 0.4), Color(1, 0.75, 0.35), Color(0.4, 0.85, 0.5)]:
 		trow.add_child(QBOTheme.swatch(color, 12))
-	trow.add_child(QBOTheme.label("LOTUS NET  —  máy tính trong bar", 14, QBOTheme.GOLD_BRIGHT))
+	trow.add_child(QBOTheme.label("LOTUS CONTROL  —  máy tính trong bar", 14, QBOTheme.GOLD_BRIGHT))
 	trow.add_child(QBOTheme.spacer())
-	trow.add_child(QBOTheme.muted(str(provider.provider_name()), 12))
 	var expand := QBOTheme.button("⛶")
 	expand.custom_minimum_size = Vector2(38, 32)
 	expand.tooltip_text = "Phóng to / thu nhỏ cửa sổ"
@@ -105,8 +110,8 @@ func _build() -> void:
 	root.add_child(tabbar)
 	_tabbar = tabbar
 	for entry in [
-		{"key": "browser", "label": "YOUTUBE"},
-		{"key": "tv", "label": "TV / MÀN HÌNH LED"},
+		{"key": "music", "label": "NHẠC / DJ"},
+		{"key": "tv", "label": "TV SÂN KHẤU"},
 		{"key": "info", "label": "THÔNG TIN"},
 	]:
 		var button := QBOTheme.button(str(entry["label"]))
@@ -119,76 +124,202 @@ func _build() -> void:
 	var content_host := Control.new()
 	content_host.name = "ContentHost"
 	content_host.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	content_host.custom_minimum_size = Vector2(0, 560)
+	content_host.custom_minimum_size = Vector2(0, 600)
 	root.add_child(content_host)
-	_build_browser(content_host)
+	_build_music(content_host)
 	_build_tv(content_host)
 	_build_info(content_host)
-	_switch_tab("browser")
-	_render_home()
+	_switch_tab("music")
 
 
-func _build_browser(host: Control) -> void:
+# ------------------------------------------------------------------ music tab
+
+func _build_music(host: Control) -> void:
 	var tab := QBOTheme.vbox(10)
-	tab.name = "BrowserTab"
+	tab.name = "MusicTab"
 	tab.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	tab.offset_top = 12
 	host.add_child(tab)
-	_content["browser"] = tab
+	_content["music"] = tab
 
-	var nav := QBOTheme.hbox(6)
-	nav.name = "NavBar"
-	tab.add_child(nav)
-	var home := QBOTheme.button("⌂")
-	home.custom_minimum_size = Vector2(42, 40)
-	home.tooltip_text = "Về trang chủ LOTUS NET"
-	home.pressed.connect(func(): _navigate("qbo://home"))
-	nav.add_child(home)
-	_address = QBOTheme.line_edit("Dán link video YouTube: youtube.com/watch?v=… hoặc youtu.be/…", false, 512)
-	_address.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_address.text = ""
-	_address.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_URL
-	_address.text_submitted.connect(func(_t): _play_from_address())
-	nav.add_child(_address)
-	nav.add_child(_paste_button(_address))
-	var go := QBOTheme.button("▶ Phát video", true)
-	go.pressed.connect(_play_from_address)
-	nav.add_child(go)
+	var now := QBOTheme.hbox(12)
+	tab.add_child(now)
+	var cover_panel := Panel.new()
+	cover_panel.custom_minimum_size = Vector2(104, 104)
+	cover_panel.add_theme_stylebox_override("panel", QBOTheme.panel_style(Color(0.02, 0.02, 0.05, 0.9), 6, Color(0.35, 0.9, 1.0, 0.3)))
+	now.add_child(cover_panel)
+	_dj_cover = TextureRect.new()
+	_dj_cover.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_dj_cover.offset_left = 5
+	_dj_cover.offset_top = 5
+	_dj_cover.offset_right = -5
+	_dj_cover.offset_bottom = -5
+	_dj_cover.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_dj_cover.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	_dj_cover.visible = false
+	cover_panel.add_child(_dj_cover)
 
-	_browser_status = QBOTheme.muted("", 12)
-	_browser_status.name = "BrowserStatus"
-	_browser_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	tab.add_child(_browser_status)
+	var info := QBOTheme.vbox(4)
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	now.add_child(info)
+	_dj_title = QBOTheme.label("", 22, QBOTheme.TEXT)
+	_dj_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_dj_title.max_lines_visible = 2
+	info.add_child(_dj_title)
+	_dj_artist = QBOTheme.label("", 15, QBOTheme.ACCENT)
+	info.add_child(_dj_artist)
+	_dj_status = QBOTheme.muted("", 12)
+	_dj_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info.add_child(_dj_status)
 
-	var content_panel := QBOTheme.panel(8)
-	content_panel.name = "WebPanel"
-	content_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	tab.add_child(content_panel)
+	var transport := QBOTheme.hbox(8)
+	tab.add_child(transport)
+	var prev := QBOTheme.button("⏮")
+	prev.custom_minimum_size = Vector2(60, 44)
+	prev.pressed.connect(func():
+		if App.world != null and App.world.dj != null:
+			App.world.dj.prev_track()
+			_refresh_dj()
+	)
+	transport.add_child(prev)
+	_dj_play = QBOTheme.button("Phát", true)
+	_dj_play.custom_minimum_size = Vector2(116, 44)
+	_dj_play.pressed.connect(func():
+		if App.world != null and App.world.dj != null:
+			App.world.dj.toggle_play()
+			_refresh_dj()
+	)
+	transport.add_child(_dj_play)
+	var next := QBOTheme.button("⏭")
+	next.custom_minimum_size = Vector2(60, 44)
+	next.pressed.connect(func():
+		if App.world != null and App.world.dj != null:
+			App.world.dj.next_track()
+			_refresh_dj()
+	)
+	transport.add_child(next)
+	var reload := QBOTheme.button("Tải lại thư viện")
+	reload.pressed.connect(func():
+		if App.world != null and App.world.dj != null:
+			App.world.dj.reload_library()
+	)
+	transport.add_child(reload)
+	var vol_label := QBOTheme.muted("Âm lượng", 12)
+	transport.add_child(vol_label)
+	_dj_volume = HSlider.new()
+	_dj_volume.min_value = 0.0
+	_dj_volume.max_value = 1.0
+	_dj_volume.step = 0.05
+	_dj_volume.custom_minimum_size = Vector2(150, 24)
+	_dj_volume.value_changed.connect(func(value: float):
+		if App.world != null and App.world.dj != null:
+			App.world.dj.set_volume(value)
+	)
+	transport.add_child(_dj_volume)
+
+	var lib_head := QBOTheme.hbox(8)
+	tab.add_child(lib_head)
+	lib_head.add_child(QBOTheme.section("PLAYLIST TỪ API"))
+	_dj_library = QBOTheme.muted("", 12)
+	lib_head.add_child(_dj_library)
+
 	var scroll := ScrollContainer.new()
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.custom_minimum_size = Vector2(0, 260)
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	content_panel.add_child(scroll)
-	_page_scroll = scroll
-	var holder := Control.new()
-	holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	holder.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.add_child(holder)
-	_page = QBOTheme.vbox(10)
-	_page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	holder.add_child(_page)
-	_webview_texture = TextureRect.new()
-	_webview_texture.name = "WebView"
-	_webview_texture.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_webview_texture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	# Giữ đúng tỉ lệ 16:9 của trang/video; phần thừa hai bên là nền tối, không
-	# kéo méo hình. Chuột được ánh xạ theo vùng ảnh thật trong _page_pixel_from_local.
-	_webview_texture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_webview_texture.visible = false
-	_webview_texture.mouse_filter = Control.MOUSE_FILTER_STOP
-	_webview_texture.focus_mode = Control.FOCUS_ALL
-	_webview_texture.gui_input.connect(_on_web_surface_input)
-	content_panel.add_child(_webview_texture)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	tab.add_child(scroll)
+	_dj_playlist = QBOTheme.vbox(4)
+	_dj_playlist.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(_dj_playlist)
 
+	var note := QBOTheme.muted("Thư viện: music.nguyenphuquyet.online/api/songs  •  MP3/OGG/WAV phát được; M4A bị ẩn.", 11)
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tab.add_child(note)
+
+
+func _refresh_dj() -> void:
+	if _dj_title == null or App.world == null or App.world.dj == null:
+		return
+	var dj: QBODJSystem = App.world.dj
+	_dj_title.text = dj.current_title
+	_dj_artist.text = dj.current_artist if dj.current_artist != "" else "—"
+	_dj_status.text = ("Đang phát" if dj.playing else "Đã tạm dừng") + "  •  " + ("đang tải bài…" if dj.is_loading_track() else "sẵn sàng")
+	_dj_play.text = "Tạm dừng" if dj.playing else "Phát"
+	_dj_volume.set_value_no_signal(dj.volume)
+	if dj.library_loading:
+		_dj_library.text = "Đang tải API…"
+	elif dj.library_error != "":
+		_dj_library.text = "%d bài  •  %s" % [dj.track_count(), dj.library_error]
+	else:
+		_dj_library.text = "%d bài phát được" % dj.track_count()
+	_rebuild_dj_playlist(dj)
+	_update_dj_cover(dj)
+	_refresh_dj_permission()
+
+
+func _rebuild_dj_playlist(dj: QBODJSystem) -> void:
+	if _dj_playlist == null:
+		return
+	var signature := "%s|%d|%s" % [dj.current_track_id, dj.track_count(), dj.library_loading]
+	if signature == _dj_signature:
+		return
+	_dj_signature = signature
+	for child in _dj_playlist.get_children():
+		child.queue_free()
+	var tracks := dj.playlist()
+	for i in tracks.size():
+		var track: Dictionary = tracks[i]
+		var row := QBOTheme.hbox(8)
+		var active := str(track.get("id", "")) == dj.current_track_id
+		var label := QBOTheme.label("%02d  %s  —  %s" % [i + 1, str(track.get("title", "?")), str(track.get("artist", ""))], 12, QBOTheme.ACCENT if active else QBOTheme.TEXT)
+		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		label.clip_text = true
+		label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		row.add_child(label)
+		var play := QBOTheme.button("Phát" if not active else "Đang phát")
+		play.custom_minimum_size = Vector2(80, 26)
+		play.add_theme_font_size_override("font_size", 10)
+		play.disabled = active or not Net.can_control("dj")
+		var track_id := str(track.get("id", ""))
+		play.pressed.connect(func():
+			dj.play_track(track_id)
+			_refresh_dj()
+		)
+		row.add_child(play)
+		_dj_playlist.add_child(row)
+
+
+func _update_dj_cover(dj: QBODJSystem) -> void:
+	if dj.current_cover_url == _dj_cover_url:
+		return
+	_dj_cover_url = dj.current_cover_url
+	if _dj_cover_url == "":
+		_dj_cover.visible = false
+		return
+	var texture: Texture2D = await dj.load_cover(_dj_cover_url)
+	if _dj_cover_url != dj.current_cover_url or not is_inside_tree():
+		return
+	if texture == null:
+		_dj_cover.visible = false
+		return
+	_dj_cover.texture = texture
+	_dj_cover.visible = true
+
+
+func _refresh_dj_permission() -> void:
+	if _dj_play == null:
+		return
+	var can := Net.can_control("dj")
+	_dj_play.disabled = not can
+	_dj_volume.editable = can
+
+
+func _on_library_changed() -> void:
+	_dj_signature = ""
+	_refresh_dj()
+
+
+# ------------------------------------------------------------------ TV tab
 
 func _build_tv(host: Control) -> void:
 	var tab := QBOTheme.vbox(12)
@@ -196,8 +327,8 @@ func _build_tv(host: Control) -> void:
 	tab.offset_top = 12
 	host.add_child(tab)
 	_content["tv"] = tab
-	tab.add_child(QBOTheme.section("ĐIỀU KHIỂN MÀN HÌNH SÂN KHẤU"))
-	var note := QBOTheme.muted("Nội dung bạn gửi sẽ hiện trên TV phụ ở sân khấu và đồng bộ cho cả phòng. Chỉ chủ phòng hoặc người được cấp quyền mới điều khiển được.", 13)
+	tab.add_child(QBOTheme.section("TV LỚN Ở SÂN KHẤU"))
+	var note := QBOTheme.muted("TV lớn giữa sân khấu phát màn nhạc DJ. Khi cần, bạn có thể phát video MP4/MOV trực tiếp trên TV này; trạng thái được đồng bộ cho cả phòng. TV nhỏ bên phải hiển thị thông tin nhà phát triển.", 13)
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	tab.add_child(note)
 	_tv_permission = QBOTheme.label("", 13, QBOTheme.GOLD)
@@ -208,7 +339,7 @@ func _build_tv(host: Control) -> void:
 	var input_row := QBOTheme.hbox(8)
 	input_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(input_row)
-	_tv_url = QBOTheme.line_edit("Dán link video YouTube cần phát trên TV", false, 512)
+	_tv_url = QBOTheme.line_edit("Dán link MP4/MOV trực tiếp (https://…/video.mp4)", false, 1000)
 	_tv_url.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_tv_url.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_URL
 	input_row.add_child(_tv_url)
@@ -222,7 +353,7 @@ func _build_tv(host: Control) -> void:
 	var state_box := QBOTheme.vbox(6)
 	state_panel.add_child(state_box)
 	state_box.add_child(QBOTheme.section("TRẠNG THÁI HIỆN TẠI"))
-	_tv_state = QBOTheme.label("Chưa có nội dung.", 14, QBOTheme.TEXT)
+	_tv_state = QBOTheme.label("TV lớn đang hiển thị màn nhạc DJ.", 14, QBOTheme.TEXT)
 	_tv_state.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	state_box.add_child(_tv_state)
 	_tv_provider = QBOTheme.muted("", 12)
@@ -239,12 +370,12 @@ func _build_tv(host: Control) -> void:
 		App.world.tv.set_playing(not playing)
 	)
 	controls.add_child(_tv_play)
-	var stop := QBOTheme.button("Tắt màn hình")
-	stop.pressed.connect(func():
+	_tv_stop = QBOTheme.button("Trở về màn nhạc DJ")
+	_tv_stop.pressed.connect(func():
 		if App.world != null and App.world.tv != null:
-			Net.send_tv({"url": "", "title": "The Chrome Lotus", "playing": false, "kind": "idle", "status": "Màn hình đã tắt.", "provider": "", "volume": 1.0, "position": 0.0})
+			App.world.tv.stop_video()
 	)
-	controls.add_child(stop)
+	controls.add_child(_tv_stop)
 	var vol_label := QBOTheme.muted("Âm lượng TV", 12)
 	controls.add_child(vol_label)
 	_tv_volume = HSlider.new()
@@ -259,425 +390,9 @@ func _build_tv(host: Control) -> void:
 	)
 	controls.add_child(_tv_volume)
 
-	var policy := QBOTheme.muted("TV phụ ở sân khấu phát video YouTube bằng iframe nhúng chính thức, đồng bộ với máy tính này cho cả phòng. Bạn chỉ cần dán link video; không phải thao tác trên cả trang web. TV lớn ở giữa vẫn chạy visualizer.", 12)
+	var policy := QBOTheme.muted("Video phát trực tiếp bằng VideoStreamPlayer + addon native_video (MP4/H.264). Không dùng WebView, iframe hay tải video từ YouTube.", 12)
 	policy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	tab.add_child(policy)
-
-
-func _build_info(host: Control) -> void:
-	var tab := QBOTheme.vbox(12)
-	tab.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	tab.offset_top = 12
-	host.add_child(tab)
-	_content["info"] = tab
-	tab.add_child(QBOTheme.section("LOTUS NET — THÔNG TIN"))
-	tab.add_child(QBOTheme.label("Máy tính này là điểm điều khiển TV phụ (màn web) và truy cập web trong bar.", 15))
-	var lines := [
-		"BrowserProvider hiện tại: %s" % provider.provider_name(),
-		"Nền tảng: %s" % provider.platform(),
-		"Nhúng web: %s" % ("Có" if provider.is_embedded_supported() else "Chưa hỗ trợ trên máy này"),
-		"Lý do: %s" % str(provider.capability().get("reason", "—")),
-		"",
-		"Bảo mật:",
-		"• Chặn localhost, mạng nội bộ và địa chỉ metadata (chống SSRF).",
-		"• Chỉ cho phép http/https; chặn javascript:, file:, data:.",
-		"• Không lưu mật khẩu hay cookie website của người chơi.",
-		"• Không vượt DRM hay giả lập trình duyệt để tải nội dung trái phép.",
-		"• Trang ngoài allowlist cần xác nhận trước khi mở.",
-		"",
-		"Tài liệu tích hợp native WebView: docs/BROWSER.md",
-	]
-	for line in lines:
-		var label := QBOTheme.label(str(line), 13, QBOTheme.MUTED if str(line).begins_with("•") or str(line) == "" else QBOTheme.TEXT)
-		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		tab.add_child(label)
-	tab.add_child(QBOTheme.hsep(8))
-	var external := QBOTheme.button("Mở trang chủ YouTube bằng trình duyệt hệ thống")
-	external.pressed.connect(func(): OS.shell_open("https://www.youtube.com"))
-	tab.add_child(external)
-
-
-func _switch_tab(key: String) -> void:
-	for tab_key in _content.keys():
-		var node: Control = _content[tab_key]
-		node.visible = tab_key == key
-	for tab_key in _tabs.keys():
-		var button: Button = _tabs[tab_key]
-		button.disabled = tab_key == key
-	if key == "tv":
-		_refresh_tv_state()
-
-
-func _nav_action(symbol: String) -> void:
-	match symbol:
-		"←":
-			_history_back()
-		"→":
-			_history_forward()
-		"⟳":
-			_navigate(_current_url)
-		"⌂":
-			_navigate("qbo://home")
-
-
-func _play_from_address() -> void:
-	var link := _address.text.strip_edges()
-	if link == "":
-		ui.call("toast", "Dán link video YouTube trước.", "warn")
-		return
-	if QBOUrlGuard.youtube_video_id(link) == "":
-		ui.call("toast", "Link YouTube không hợp lệ.", "error")
-		return
-	_navigate(link)
-
-
-func _navigate(input: String) -> void:
-	var target := input.strip_edges()
-	if target == "":
-		return
-	var video_id := QBOUrlGuard.youtube_video_id(target)
-	if video_id != "":
-		# Link YouTube: phát thẳng bằng iframe nhúng, không mở cả trang web.
-		var watch_url := "https://www.youtube.com/watch?v=" + video_id
-		_current_url = watch_url
-		_address.text = watch_url
-		_push_history(watch_url)
-		_open_external(watch_url, QBOUrlGuard.validate(watch_url))
-		return
-	if target.begins_with("qbo://"):
-		_address.text = target
-		_current_url = target
-		_push_history(target)
-		if target == "qbo://home":
-			_render_home()
-		elif target == "qbo://rules":
-			_render_rules()
-		elif target == "qbo://help":
-			_render_help()
-		elif target == "qbo://room":
-			_render_room()
-		else:
-			_render_home()
-		return
-	var check := QBOUrlGuard.validate(target)
-	if not check["ok"]:
-		_render_notice("Không mở được URL", str(check["reason"]), QBOTheme.DANGER)
-		return
-	var url := str(check["url"])
-	_current_url = url
-	_address.text = url
-	_push_history(url)
-	if not bool(check["trusted"]):
-		_render_confirm_external(url)
-		return
-	_open_external(url, check)
-
-
-func _open_external(url: String, check: Dictionary) -> void:
-	var capability := provider.capability()
-	var embedded := bool(capability.get("embedded", false))
-	_browser_status.text = "Provider: %s" % provider.provider_name()
-	# Ưu tiên màn web dùng chung: máy tính và TV phụ hiển thị cùng một trang.
-	if App.world != null and App.world.tv != null and App.world.tv.web_available():
-		var result: Dictionary = App.world.tv.show_shared(url, "")
-		if bool(result.get("ok", false)):
-			_render_notice(
-				"Đang hiển thị trên TV phụ",
-				"Trang này được render bởi %s và đồng bộ với TV phụ ở sân khấu. Bấm trực tiếp vào trang hoặc vào TV trong club để thao tác." % App.world.tv.web_backend_name(),
-				QBOTheme.SUCCESS
-			)
-			_show_shared_page(url)
-			return
-	embedded = embedded or (App.world != null and App.world.tv != null and App.world.tv.web_available())
-	if embedded and provider.open(url):
-		_webview_texture.visible = true
-		var texture := provider.get_texture()
-		if texture != null:
-			_webview_texture.texture = texture
-		_render_notice("Đang hiển thị trong WebView", "Trang được render bởi %s. Tôn trọng chính sách nhúng của website." % provider.provider_name(), QBOTheme.SUCCESS)
-		return
-	_webview_texture.visible = false
-	if str(check["kind"]) == "youtube":
-		_render_notice(
-			"YouTube chưa thể phát tại đây",
-			"Thiết bị này chưa có trình duyệt nhúng. Bạn có thể mở bằng trình duyệt hệ thống hoặc gửi URL lên TV phụ để cả phòng cùng biết nội dung. Không tải video trực tiếp để tránh vi phạm chính sách YouTube.",
-			QBOTheme.GOLD,
-			url
-		)
-	elif str(check["kind"]) == "video":
-		_render_notice(
-			"Video .ogv có thể phát trên TV",
-			"Godot hỗ trợ native Theora (.ogv). Gửi URL lên TV để phát đồng bộ cho cả phòng; MP4 cần WebView/plugin.",
-			QBOTheme.GOLD,
-			url
-		)
-	else:
-		_render_notice(
-			"Chưa nhúng được trang web",
-			str(capability.get("reason", "Thiếu WebView/CEF provider.")),
-			QBOTheme.GOLD,
-			url
-		)
-
-
-func _show_shared_page(url: String) -> void:
-	_web_surface_enabled = true
-	_webview_texture.visible = true
-	if _page_scroll != null:
-		_page_scroll.visible = false
-	if _webview_texture.texture == null and App.world != null and App.world.tv != null:
-		_webview_texture.texture = App.world.tv.shared_texture()
-	_address.text = url
-	_browser_status.text = "Đồng bộ TV phụ  •  %s" % App.world.tv.web_backend_name()
-	_apply_layout()
-
-
-func _on_web_surface_input(event: InputEvent) -> void:
-	if App.world == null or App.world.tv == null:
-		return
-	if event is InputEventKey:
-		# Gõ trực tiếp vào trang đang phản chiếu từ TV.
-		App.world.tv.key_page(event, event.pressed)
-		_webview_texture.accept_event()
-		return
-	if event is InputEventMouseMotion:
-		var pixel := _page_pixel_from_local(event.position)
-		if pixel.x >= 0.0:
-			App.world.tv.move_page(pixel)
-		_webview_texture.accept_event()
-		return
-	if event is InputEventMouseButton and event.pressed:
-		var pixel := _page_pixel_from_local(event.position)
-		if pixel.x < 0.0:
-			return
-		if event.button_index == MOUSE_BUTTON_LEFT:
-			_webview_texture.grab_focus()
-			App.world.tv.click_page(pixel)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			App.world.tv.wheel_page(pixel, -120.0)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			App.world.tv.wheel_page(pixel, 120.0)
-		else:
-			return
-		_webview_texture.accept_event()
-
-
-func _page_pixel_from_local(local: Vector2) -> Vector2:
-	var box := _webview_texture.size
-	if box.x <= 1.0 or box.y <= 1.0:
-		return Vector2(-1, -1)
-	# Ảnh 16:9 nằm giữa khung (STRETCH_KEEP_ASPECT_CENTERED): trừ viền hai bên
-	# rồi chia theo tỉ lệ để ra pixel CSS 1280x720 của trang.
-	var css_size := Vector2(QBOTVSystem.SCREEN_SIZE)
-	var scale := minf(box.x / css_size.x, box.y / css_size.y)
-	var content := css_size * scale
-	var offset := (box - content) * 0.5
-	var point := (local - offset) / scale
-	if point.x < 0.0 or point.y < 0.0 or point.x > css_size.x or point.y > css_size.y:
-		return Vector2(-1, -1)
-	return point
-
-
-func _process(_delta: float) -> void:
-	if App.world == null or App.world.tv == null:
-		return
-	var tv = App.world.tv
-	if not tv.is_web_active():
-		return
-	var texture: Texture2D = tv.shared_texture()
-	if texture == null:
-		return
-	if not _web_surface_enabled:
-		_show_shared_page(tv.shared_url())
-	_webview_texture.texture = texture
-	if not _address.has_focus():
-		_address.text = tv.shared_url()
-
-
-func _render_confirm_external(url: String) -> void:
-	_clear_page()
-	_page.add_child(QBOTheme.title("XÁC NHẬN MỞ TRANG NGOÀI", 24))
-	var label := QBOTheme.muted("Trang này không nằm trong allowlist. Chỉ tiếp tục nếu bạn tin tưởng nguồn:\n%s" % url, 14)
-	label.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
-	_page.add_child(label)
-	var row := QBOTheme.hbox(10)
-	var proceed := QBOTheme.button("Tiếp tục mở", true)
-	proceed.pressed.connect(func():
-		var check := QBOUrlGuard.validate(url)
-		if check["ok"]:
-			_open_external(str(check["url"]), check)
-	)
-	row.add_child(proceed)
-	var cancel := QBOTheme.button("Hủy")
-	cancel.pressed.connect(func(): _navigate("qbo://home"))
-	row.add_child(cancel)
-	_page.add_child(row)
-
-
-func _render_home() -> void:
-	_clear_page()
-	_browser_status.text = "LOTUS TV  •  phát video YouTube bằng iframe nhúng"
-	_page.add_child(QBOTheme.title("LOTUS NET", 30))
-	_page.add_child(QBOTheme.muted("Dán link video YouTube vào thanh phía trên rồi bấm “▶ Phát video”. Video sẽ hiện trên màn web của máy tính và TV phụ ở sân khấu, đồng bộ cho cả phòng.", 14))
-	_page.add_child(QBOTheme.hsep(6))
-	_page.add_child(QBOTheme.section("VIDEO MẪU"))
-	var samples := QBOTheme.hbox(8)
-	_page.add_child(samples)
-	for item in [
-		{"label": "Big Buck Bunny", "url": "https://www.youtube.com/watch?v=aqz-KE-bpKQ"},
-		{"label": "Blender Open Movie", "url": "https://www.youtube.com/watch?v=YE7VzlLtp-4"},
-	]:
-		var button := QBOTheme.button(str(item["label"]))
-		button.pressed.connect(func(): _navigate(str(item["url"])))
-		samples.add_child(button)
-	_page.add_child(QBOTheme.hsep(6))
-	_page.add_child(QBOTheme.section("TRANG NỘI BỘ"))
-	var internal := QBOTheme.hbox(8)
-	_page.add_child(internal)
-	for item in [
-		{"label": "Quy định club", "url": "qbo://rules"},
-		{"label": "Hướng dẫn TV", "url": "qbo://help"},
-		{"label": "Phòng hiện tại", "url": "qbo://room"},
-	]:
-		var button := QBOTheme.button(str(item["label"]))
-		button.pressed.connect(func(): _navigate(str(item["url"])))
-		internal.add_child(button)
-
-
-func _render_rules() -> void:
-	_clear_page()
-	_page.add_child(QBOTheme.title("QUY ĐỊNH CLUB", 26))
-	for line in [
-		"1. Tôn trọng mọi người trong phòng; không quấy rối, phân biệt đối xử.",
-		"2. Không phát nội dung vi phạm bản quyền hoặc DRM.",
-		"3. Chủ phòng có quyền khóa DJ/TV/ánh sáng và mời người vi phạm ra ngoài.",
-		"4. Không chia sẻ link độc hại, lừa đảo hoặc nội dung người lớn.",
-		"5. Báo cáo hành vi xấu qua hồ sơ người chơi hoặc API /api/reports.",
-	]:
-		var label := QBOTheme.label(line, 14, QBOTheme.MUTED)
-		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		_page.add_child(label)
-
-
-func _render_help() -> void:
-	_clear_page()
-	_page.add_child(QBOTheme.title("HƯỚNG DẪN TV / MÀN HÌNH LED", 26))
-	for line in [
-		"Mở tab TV / MÀN HÌNH LED, nhập URL rồi bấm Gửi lên TV.",
-		"Màn hình TV phụ ở sân khấu hiển thị trạng thái đồng bộ cho cả phòng.",
-		"Video .ogv (Theora) phát native và đồng bộ thời gian.",
-		"YouTube chỉ phát khi thiết bị có WebView nhúng; nếu không, hãy mở bằng trình duyệt hệ thống.",
-		"Âm lượng TV được đồng bộ cùng trạng thái.",
-	]:
-		var label := QBOTheme.label("• " + line, 14, QBOTheme.MUTED)
-		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		_page.add_child(label)
-
-
-func _render_room() -> void:
-	_clear_page()
-	_page.add_child(QBOTheme.title("PHÒNG HIỆN TẠI", 26))
-	var room: Dictionary = GameState.room
-	_page.add_child(QBOTheme.label("Tên: %s" % str(room.get("name", "—")), 15))
-	_page.add_child(QBOTheme.label("Mã: %s" % str(room.get("code", "—")), 15, QBOTheme.CYAN))
-	_page.add_child(QBOTheme.label("Sức chứa: %d" % int(room.get("maxPlayers", 0)), 15))
-	_page.add_child(QBOTheme.label("Số người: %d" % Net.players.size(), 15))
-	var owner_name := "—"
-	if room.get("owner") is Dictionary:
-		owner_name = str(room["owner"].get("displayName", "—"))
-	_page.add_child(QBOTheme.label("Chủ phòng: %s" % owner_name, 15))
-
-
-func _render_notice(title: String, body: String, color: Color, url := "") -> void:
-	_clear_page()
-	var heading := QBOTheme.label(title, 24, color)
-	heading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_page.add_child(heading)
-	var label := QBOTheme.muted(body, 14)
-	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_page.add_child(label)
-	if url != "":
-		var url_label := QBOTheme.label(url, 12, QBOTheme.CYAN)
-		url_label.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
-		_page.add_child(url_label)
-		var row := QBOTheme.hbox(8)
-		_page.add_child(row)
-		var open_external := QBOTheme.button("Mở bằng trình duyệt hệ thống")
-		open_external.pressed.connect(func(): OS.shell_open(url))
-		row.add_child(open_external)
-		var send_tv := QBOTheme.button("Gửi lên TV sân khấu")
-		send_tv.disabled = not (App.world != null and Net.can_control("tv"))
-		send_tv.pressed.connect(func():
-			if App.world != null and App.world.tv != null:
-				var result: Dictionary = App.world.tv.publish(url, "", true)
-				if bool(result.get("ok", false)):
-					ui.call("toast", str(result.get("status", "Đã gửi lên TV.")), "success")
-				else:
-					ui.call("toast", str(result.get("reason", "Không gửi được.")), "error")
-		)
-		row.add_child(send_tv)
-
-
-func _clear_page() -> void:
-	if _page == null:
-		return
-	for child in _page.get_children():
-		child.queue_free()
-	_web_surface_enabled = false
-	if _webview_texture != null:
-		_webview_texture.visible = false
-	if _page_scroll != null:
-		_page_scroll.visible = true
-	_apply_layout()
-
-
-func _push_history(url: String) -> void:
-	if _history_index >= 0 and _history_index < _history.size() and str(_history[_history_index]) == url:
-		return
-	_history = _history.slice(0, _history_index + 1)
-	_history.append(url)
-	_history_index = _history.size() - 1
-
-
-func _history_back() -> void:
-	if _history_index > 0:
-		_history_index -= 1
-		var url := str(_history[_history_index])
-		_address.text = url
-		_navigate(url)
-
-
-func _history_forward() -> void:
-	if _history_index >= 0 and _history_index < _history.size() - 1:
-		_history_index += 1
-		var url := str(_history[_history_index])
-		_address.text = url
-		_navigate(url)
-
-
-func _paste_button(field: LineEdit) -> Button:
-	var button := QBOTheme.button("📋 Dán")
-	button.custom_minimum_size = Vector2(84, 44)
-	button.tooltip_text = "Dán nội dung đang có trong bộ nhớ tạm"
-	button.pressed.connect(func(): _paste_clipboard_into(field))
-	return button
-
-
-func _paste_clipboard_into(field: LineEdit) -> void:
-	## Android/iOS không hiện menu chuột phải của LineEdit khi chạm giữ, nên
-	## người chơi không có chỗ để chọn "Paste". Nút Dán đọc thẳng clipboard
-	## của hệ điều hành và đổ vào ô nhập.
-	if field == null or not is_instance_valid(field):
-		return
-	var clip := DisplayServer.clipboard_get().strip_edges()
-	clip = clip.replace("\r", "").replace("\n", "").replace("\t", "")
-	if clip == "":
-		if ui != null:
-			ui.call("toast", "Bộ nhớ tạm đang trống — hãy sao chép link trước rồi bấm Dán.", "warn")
-		return
-	field.grab_focus()
-	field.text = clip
-	field.caret_column = field.text.length()
 
 
 func _publish_tv() -> void:
@@ -686,24 +401,15 @@ func _publish_tv() -> void:
 		return
 	var url := _tv_url.text.strip_edges()
 	if url == "":
-		ui.call("toast", "Dán link video YouTube trước khi phát lên TV.", "warn")
+		ui.call("toast", "Dán link video MP4/MOV trực tiếp trước.", "warn")
 		return
 	if App.world == null or App.world.tv == null:
 		ui.call("toast", "Chưa ở trong phòng.", "error")
 		return
-	if QBOUrlGuard.youtube_video_id(url) == "":
-		ui.call("toast", "Link YouTube không hợp lệ.", "error")
-		return
-	var result: Dictionary = App.world.tv.play_youtube(url)
+	var result: Dictionary = App.world.tv.play_video_url(url)
 	if bool(result.get("ok", false)):
-		ui.call("toast", str(result.get("status", "Đang phát video trên TV.")), "success")
-		# Thiết bị có WebView native (mobile) mở luôn video để người bấm thấy kết quả.
-		if App.world.tv.native_player_available():
-			App.world.tv.open_native_player()
-		elif not App.world.tv.web_available():
-			# iOS/desktop thiếu trình duyệt nhúng: mở bằng ứng dụng hệ thống, vẫn
-			# giữ trạng thái TV đồng bộ cho cả phòng.
-			OS.shell_open(url)
+		ui.call("toast", "Đang phát video trên TV lớn.", "success")
+		_tv_url.text = ""
 	else:
 		ui.call("toast", str(result.get("reason", "Không phát được video.")), "error")
 	_refresh_tv_state()
@@ -713,16 +419,16 @@ func _refresh_tv_state() -> void:
 	if _tv_state == null:
 		return
 	var state: Dictionary = Net.tv_state
-	if state.is_empty():
-		_tv_state.text = "Chưa có nội dung được chia sẻ."
-		_tv_provider.text = "Provider: %s" % provider.provider_name()
+	if state.is_empty() or str(state.get("kind", "")) != "video":
+		_tv_state.text = "TV lớn đang hiển thị màn nhạc DJ."
+		_tv_provider.text = "MP4/MOV: addon native_video"
 	else:
 		_tv_state.text = "%s\n%s\nNgười gửi: %s" % [
 			str(state.get("title", "—")),
 			str(state.get("status", "")),
 			str(state.get("by", "—")),
 		]
-		_tv_provider.text = str(state.get("provider", ""))
+		_tv_provider.text = "%s  •  %s" % [str(state.get("url", "")), "đang phát" if bool(state.get("playing", false)) else "tạm dừng"]
 	_refresh_tv_permissions()
 
 
@@ -733,6 +439,78 @@ func _refresh_tv_permissions() -> void:
 	_tv_permission.text = "Bạn có quyền điều khiển TV." if can else "Bạn chưa có quyền điều khiển TV — chỉ chủ phòng hoặc người được cấp quyền."
 	_tv_permission.add_theme_color_override("font_color", QBOTheme.SUCCESS if can else QBOTheme.GOLD)
 	_tv_publish.disabled = not can
+	_tv_play.disabled = not can
+	_tv_stop.disabled = not can
+	_tv_volume.editable = can
+
+
+# ------------------------------------------------------------------ info tab
+
+func _build_info(host: Control) -> void:
+	var tab := QBOTheme.vbox(12)
+	tab.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	tab.offset_top = 12
+	host.add_child(tab)
+	_content["info"] = tab
+	tab.add_child(QBOTheme.section("LOTUS CONTROL — THÔNG TIN"))
+	tab.add_child(QBOTheme.label("Máy tính này điều khiển booth DJ và TV lớn ở sân khấu.", 15))
+	for line in [
+		"Thư viện nhạc: %s" % AppConfig.music_songs_url(),
+		"Định dạng audio: MP3, OGG, WAV (M4A/AAC bị ẩn).",
+		"Định dạng video TV: MP4, MOV, M4V, OGV.",
+		"MP4/H.264 dùng addon native_video (Windows/macOS/Linux, Forward+).",
+		"Không còn WebView, iframe YouTube hay tải video từ YouTube.",
+		"Trạng thái DJ/TV được server giữ lại để người vào sau đồng bộ đúng.",
+		"",
+		"Bảo mật:",
+		"• Chặn localhost, mạng nội bộ và địa chỉ metadata (chống SSRF).",
+		"• Chỉ cho phép http/https và media trực tiếp.",
+		"• Không lưu cookie/mật khẩu website.",
+	]:
+		var label := QBOTheme.label(str(line), 13, QBOTheme.MUTED if str(line).begins_with("•") or str(line) == "" else QBOTheme.TEXT)
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		tab.add_child(label)
+
+
+# ------------------------------------------------------------------ helpers
+
+func _switch_tab(key: String) -> void:
+	for tab_key in _content.keys():
+		var node: Control = _content[tab_key]
+		node.visible = tab_key == key
+	for tab_key in _tabs.keys():
+		var button: Button = _tabs[tab_key]
+		button.disabled = tab_key == key
+	if key == "tv":
+		_refresh_tv_state()
+	elif key == "music":
+		_refresh_dj()
+
+
+func _paste_button(field: LineEdit) -> Button:
+	var button := QBOTheme.button("📋 Dán")
+	button.custom_minimum_size = Vector2(84, 44)
+	button.tooltip_text = "Dán nội dung đang có trong bộ nhớ tạm"
+	button.pressed.connect(func():
+		var clip := DisplayServer.clipboard_get().strip_edges()
+		clip = clip.replace("\r", "").replace("\n", "").replace("\t", "")
+		if clip == "":
+			ui.call("toast", "Bộ nhớ tạm đang trống — hãy sao chép link trước.", "warn")
+			return
+		field.grab_focus()
+		field.text = clip
+		field.caret_column = field.text.length()
+	)
+	return button
+
+
+func _process(delta: float) -> void:
+	_ui_timer -= delta
+	if _ui_timer > 0.0:
+		return
+	_ui_timer = 0.5
+	if _content.get("music", null) != null and _content["music"].visible:
+		_refresh_dj()
 
 
 func _toggle_fullscreen() -> void:
@@ -741,7 +519,6 @@ func _toggle_fullscreen() -> void:
 
 
 func _apply_layout() -> void:
-	# Trên mobile luôn dùng gần full màn hình; cửa sổ cố định sẽ tràn viền.
 	if AppConfig.is_mobile:
 		_window.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		_window.offset_left = 8
@@ -749,21 +526,18 @@ func _apply_layout() -> void:
 		_window.offset_right = -8
 		_window.offset_bottom = -8
 	elif _fullscreen:
-		_window.offset_left = -790
-		_window.offset_right = 790
-		_window.offset_top = -445
-		_window.offset_bottom = 445
+		_window.offset_left = -780
+		_window.offset_right = 780
+		_window.offset_top = -440
+		_window.offset_bottom = 440
 	else:
-		_window.offset_left = -720
-		_window.offset_right = 720
+		_window.offset_left = -700
+		_window.offset_right = 700
 		_window.offset_top = -430
 		_window.offset_bottom = 430
 	if _tabbar != null:
 		_tabbar.visible = not _fullscreen
-	if _browser_status != null:
-		_browser_status.visible = not _web_surface_enabled and not _fullscreen
 
 
 func _close() -> void:
-	provider.close()
 	ui.call("close_overlay")

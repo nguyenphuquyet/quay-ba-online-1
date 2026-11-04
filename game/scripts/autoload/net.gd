@@ -25,7 +25,6 @@ signal interaction_received(id: int, target: String, action: String, payload: Di
 signal lighting_received(state: Dictionary)
 signal dj_received(action: String, payload: Dictionary)
 signal tv_received(state: Dictionary)
-signal tv_input_received(payload: Dictionary)
 signal room_settings_received(settings: Dictionary)
 signal kicked(reason: String)
 signal local_player_ready(spawn: Dictionary)
@@ -614,34 +613,6 @@ func cli_tv(state: Dictionary) -> void:
 	tv_received.emit(state)
 
 
-# ------------------------------------------------------------------ TV web input
-## Click/cuộn chuột trên màn web được phát cho cả phòng để mọi client thấy
-## cùng một trang web ở cùng trạng thái thao tác.
-
-func send_tv_input(payload: Dictionary) -> void:
-	if mode == AppConfig.Mode.SOLO:
-		return
-	if not is_online():
-		return
-	rpc_id(1, "srv_tv_input", payload)
-
-
-@rpc("any_peer", "call_remote", "reliable")
-func srv_tv_input(payload: Dictionary) -> void:
-	if not is_server():
-		return
-	var sender := multiplayer.get_remote_sender_id()
-	if not players.has(sender) or not can_control("tv", sender):
-		return
-	tv_input_received.emit(payload)
-	_broadcast_except(sender, "cli_tv_input", [payload])
-
-
-@rpc("authority", "call_remote", "reliable")
-func cli_tv_input(payload: Dictionary) -> void:
-	tv_input_received.emit(payload)
-
-
 # ------------------------------------------------------------------ room settings
 
 func set_room_setting(key: String, value: Variant) -> void:
@@ -766,8 +737,6 @@ func _rpc_peer(id: int, method: String, args: Array) -> void:
 			rpc_id(id, "cli_player_left", args[0])
 		"cli_kicked":
 			rpc_id(id, "cli_kicked", args[0])
-		"cli_tv_input":
-			rpc_id(id, "cli_tv_input", args[0])
 		"cli_room_settings":
 			rpc_id(id, "cli_room_settings", args[0])
 		"cli_player_state":

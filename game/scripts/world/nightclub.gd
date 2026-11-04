@@ -10,7 +10,7 @@ const LOBBY_CEIL := 6.2
 const BACK_CEIL := 4.2
 const BALCONY_Y := 5.0
 
-## TV chính giữa sân khấu (visualizer, tỉ lệ 20:9) và TV phụ bên phải (màn web).
+## TV chính giữa sân khấu (nhạc DJ/MP4, tỉ lệ 20:9) và TV nhỏ bên phải (thông tin nhà phát triển).
 const MAIN_TV_SIZE := Vector2(14.4, 6.48)
 const MAIN_TV_CENTER := Vector3(0.0, 5.55, -6.05)
 const SIDE_TV_SIZE := Vector2(5.4, 3.04)
@@ -29,8 +29,8 @@ var environment_node: WorldEnvironment
 
 var stage_screen: MeshInstance3D
 var stage_screen_material: StandardMaterial3D
-var stage_web_screen: MeshInstance3D
-var web_screen_material: StandardMaterial3D
+var stage_side_screen: MeshInstance3D
+var side_screen_material: StandardMaterial3D
 var lobby_emitters: Array = []
 var tv_screens: Array = []
 var _pending_lights: Array = []
@@ -556,7 +556,7 @@ func _build_stage() -> void:
 	for side in [-1, 1]:
 		_led_strip(Vector3(side * 9.2, 5.5, -6.2), Vector3(0.08, 8.1, 0.08), Color(1.0, 0.3, 0.55) if side < 0 else Color(0.35, 0.7, 1.0))
 
-	# TV dài ở giữa (20:9) — màn hình chính chạy visualizer/branding.
+	# TV dài ở giữa (20:9) — màn hình chính phát nhạc DJ / video MP4.
 	stage_screen_material = QBOMaterials.screen()
 	var screen := MeshInstance3D.new()
 	screen.name = "StageTV"
@@ -583,19 +583,19 @@ func _build_stage() -> void:
 		_box(self, "TVColumn_%d" % side, Vector3(side * (tv_half.x + 0.45), MAIN_TV_CENTER.y, -6.12), Vector3(0.34, MAIN_TV_SIZE.y + 0.9, 0.3), QBOMaterials.wall_panel(), false)
 		_led_strip(Vector3(side * (tv_half.x + 0.26), MAIN_TV_CENTER.y, -6.06), Vector3(0.07, MAIN_TV_SIZE.y + 0.6, 0.07), Color(1.0, 0.3, 0.5) if side < 0 else Color(0.35, 0.7, 1.0))
 
-	# TV phụ bên phải sân khấu: màn web thật, nghiêng về phía sàn nhảy.
-	web_screen_material = QBOMaterials.screen()
-	var web_screen := MeshInstance3D.new()
-	web_screen.name = "SideTV"
-	var web_mesh := QuadMesh.new()
-	web_mesh.size = SIDE_TV_SIZE
-	web_screen.mesh = web_mesh
-	web_screen.material_override = web_screen_material
-	web_screen.position = SIDE_TV_CENTER
-	web_screen.rotation_degrees.y = SIDE_TV_YAW
-	add_child(web_screen)
-	stage_web_screen = web_screen
-	# Khung TV phụ.
+	# TV nhỏ bên phải sân khấu: thông tin nhà phát triển, nghiêng về phía sàn nhảy.
+	side_screen_material = QBOMaterials.screen()
+	var side_screen := MeshInstance3D.new()
+	side_screen.name = "SideTV"
+	var side_mesh := QuadMesh.new()
+	side_mesh.size = SIDE_TV_SIZE
+	side_screen.mesh = side_mesh
+	side_screen.material_override = side_screen_material
+	side_screen.position = SIDE_TV_CENTER
+	side_screen.rotation_degrees.y = SIDE_TV_YAW
+	add_child(side_screen)
+	stage_side_screen = side_screen
+	# Khung TV nhỏ.
 	var side_frame := MeshInstance3D.new()
 	side_frame.name = "SideTVFrame"
 	var frame_mesh := BoxMesh.new()
@@ -623,10 +623,10 @@ func _build_stage() -> void:
 	side_trim_bottom.position = SIDE_TV_CENTER + Vector3(0, -SIDE_TV_SIZE.y * 0.5 - 0.2, 0)
 	side_trim_bottom.rotation_degrees.y = SIDE_TV_YAW
 	add_child(side_trim_bottom)
-	# Giá treo + đèn nhấn cho TV phụ.
+	# Giá treo + đèn nhấn cho TV nhỏ.
 	_box(self, "SideTVMount", SIDE_TV_CENTER + Vector3(0.5, 0, -0.5), Vector3(0.26, 0.26, 1.0), QBOMaterials.brushed_metal(), false, SIDE_TV_YAW)
 	_led_strip(SIDE_TV_CENTER + Vector3(0, SIDE_TV_SIZE.y * 0.5 + 0.26, 0.06), Vector3(SIDE_TV_SIZE.x, 0.04, 0.04), Color(0.4, 0.85, 1.0))
-	_add_interactable("stage_screen", "Màn web sân khấu — bấm để thao tác", "tv_control", Vector3(9.1, 1.6, -1.6), {"screen": "stage"}, Vector3(5.0, 3.2, 3.2))
+	_add_interactable("stage_screen", "Màn hình sân khấu — mở bảng điều khiển", "tv_control", Vector3(9.1, 1.6, -1.6), {"screen": "stage"}, Vector3(5.0, 3.2, 3.2))
 
 	# Booth DJ — đặt thấp hơn mép dưới TV để không che nội dung.
 	_box(self, "DJBooth", Vector3(0, 1.52, -2.2), Vector3(6.4, 1.04, 1.3), QBOMaterials.wood_dark())

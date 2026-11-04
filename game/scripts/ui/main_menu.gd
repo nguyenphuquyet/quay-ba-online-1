@@ -120,7 +120,7 @@ func _build_poster() -> void:
 
 	var desc := QBOTheme.muted(
 		"Nightclub Chinese Modern · Cyberpunk nhẹ\n" +
-		"TV visualizer 20:9 · TV web tương tác · DJ booth · 2 quầy bar · VIP lounge",
+		"TV nhạc DJ 20:9 · TV thông tin nhà phát triển · DJ booth · 2 quầy bar · VIP lounge",
 		13
 	)
 	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -131,7 +131,7 @@ func _build_poster() -> void:
 		{"k": "Bản đồ", "v": "The Chrome Lotus"},
 		{"k": "Sức chứa", "v": "tối đa 32 người / phòng"},
 		{"k": "Ánh sáng", "v": "8 preset + beat sync"},
-		{"k": "Màn hình", "v": "TV visualizer + TV web + PC"},
+		{"k": "Màn hình", "v": "TV nhạc DJ + TV nhà phát triển + PC"},
 	]:
 		var row := QBOTheme.hbox(8)
 		var key := QBOTheme.muted(str(line["k"]), 12)

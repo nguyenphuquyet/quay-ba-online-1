@@ -129,7 +129,8 @@ server/
 
 ## 8. Giới hạn đã biết
 
-- Browser nhúng PC (CEF/WebView2), Android WebView, iOS WKWebView cần native plugin chưa được build trong môi trường này; provider báo đúng năng lực.
+- Video MP4/MOV dùng GDExtension `native_video`, cần renderer Forward+ hoặc Mobile (RenderingDevice). Trên máy chỉ có OpenGL Compatibility, video vẫn giải mã nhưng không hiển thị khung hình; OGV/Theora chạy được trên mọi renderer.
+- `native_video` chỉ có binary Windows/macOS/Linux, không hỗ trợ Android/iOS; TV trên mobile chỉ phát OGV.
 - Voice chat WebRTC/SFU chưa triển khai.
 - Chưa có build Android/iOS do thiếu SDK/Xcode.
 - Chưa kiểm thử backend với MySQL thật trong môi trường này (không có MySQL/Docker); schema/Prisma/build đã được kiểm tra tĩnh.

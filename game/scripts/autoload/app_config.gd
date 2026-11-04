@@ -5,11 +5,15 @@ extends Node
 const APP_NAME := "QUẨY BAR ONLINE"
 const APP_VERSION := "0.1.0"
 const DEFAULT_API_URL := "https://quay-bar-online-server.vercel.app"
+## Thư viện nhạc dùng chung cho booth DJ và TV lớn ở sân khấu.
+const DEFAULT_MUSIC_API_URL := "https://music.nguyenphuquyet.online"
+const MUSIC_SONGS_PATH := "/api/songs?take=1000"
 const DEFAULT_GAME_HOST := "127.0.0.1"
 const DEFAULT_GAME_PORT := 7000
 const MAX_ROOM_PLAYERS := 32
 const NETWORK_TICK_RATE := 15
 const SERVER_PORT_ENV := "QBO_GAME_PORT"
+const MUSIC_API_ENV := "QBO_MUSIC_API_URL"
 
 const PLAYER_WALK_SPEED := 3.4
 const PLAYER_RUN_SPEED := 6.2
@@ -23,6 +27,7 @@ const SERVER_SPEED_MULTIPLIER := 1.6
 enum Mode { SOLO, DEDICATED_SERVER, CLIENT }
 
 var api_url := DEFAULT_API_URL
+var music_api_url := DEFAULT_MUSIC_API_URL
 var game_host := DEFAULT_GAME_HOST
 var game_port := DEFAULT_GAME_PORT
 var game_secret := ""
@@ -45,6 +50,9 @@ func _read_environment() -> void:
 	var env_api := OS.get_environment("QBO_API_URL")
 	if env_api != "":
 		api_url = env_api.rstrip("/")
+	var env_music := OS.get_environment(MUSIC_API_ENV)
+	if env_music != "":
+		music_api_url = env_music.rstrip("/")
 	var env_host := OS.get_environment("QBO_GAME_HOST")
 	if env_host != "":
 		game_host = env_host
@@ -67,6 +75,8 @@ func _parse_args() -> void:
 			game_host = arg.split("=")[1]
 		elif arg.begins_with("--api="):
 			api_url = arg.split("=")[1].rstrip("/")
+		elif arg.begins_with("--music-api="):
+			music_api_url = arg.split("=")[1].rstrip("/")
 		elif arg == "--allow-unverified-tickets":
 			allow_unverified_tickets = true
 
@@ -99,6 +109,10 @@ func _add_key_action(action: StringName, keys: Array) -> void:
 
 func endpoint() -> String:
 	return "http://%s:%d" % [game_host, game_port]
+
+
+func music_songs_url() -> String:
+	return music_api_url.rstrip("/") + MUSIC_SONGS_PATH
 
 
 func suggested_graphics_preset() -> String:
