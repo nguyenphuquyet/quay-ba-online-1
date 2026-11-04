@@ -768,15 +768,31 @@ func _run_net_smoke(target: String) -> void:
 	Net.player_joined.connect(func(id: int, _info: Dictionary):
 		print("[NET-SMOKE] player_joined id=%d" % id))
 	Net.join_failed.connect(func(reason: String): printerr("[NET-SMOKE] join_failed: " + reason))
+	# Test production: đăng nhập thật + biết mã phòng để reconnect xin được
+	# ticket mới (ticket cũ chỉ dùng một lần).
+	for arg in AppConfig.launch_args:
+		if arg.begins_with("--login="):
+			var creds := arg.trim_prefix("--login=").split(":", false, 1)
+			if creds.size() == 2:
+				var login_res := await Api.login(creds[0], creds[1])
+				print("[NET-SMOKE] login ok=%s" % str(login_res.get("ok", false)))
+		elif arg.begins_with("--room-code="):
+			var room_code := arg.trim_prefix("--room-code=")
+			if room_code != "":
+				GameState.room = {"code": room_code, "name": "Prod Test", "maxPlayers": 8}
 	_load_world({"code": "NETSMOKE", "name": "Net Smoke", "maxPlayers": 8}, false)
 	Net.connect_to_room(host, port, ticket)
 	# Xác minh ticket đi vòng qua backend (có thể mất vài giây nếu server ở xa),
 	# nên chờ đủ lâu trước khi kết luận. Riêng chế độ quan sát DJ cần bắt đầu
-	# lấy mẫu sớm để thấy lúc chủ phòng còn đang tải bài.
-	var join_wait := 12.0
+	# lấy mẫu sớm để thấy lúc chủ phòng còn đang tải bài: chờ vừa đủ để có
+	# roster rồi vào ngay, không chờ cứng 3 giây (mạng thật có thể chậm hơn).
 	if "--watch-dj" in AppConfig.launch_args:
-		join_wait = 3.0
-	await get_tree().create_timer(join_wait).timeout
+		var watch_join := 0.0
+		while Net.players.is_empty() and watch_join < 12.0:
+			await get_tree().create_timer(0.25).timeout
+			watch_join += 0.25
+	else:
+		await get_tree().create_timer(12.0).timeout
 	var players_count := Net.players.size()
 	var scene_count := world.players.size() if world != null else 0
 	print("[NET-SMOKE] players=%d roster=%d scene=%d local=%d owner=%d connected=%s" % [players_count, Net.roster.size(), scene_count, Net.local_peer_id, Net.owner_id, str(Net.is_online())])

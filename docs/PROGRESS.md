@@ -121,6 +121,9 @@ Tài liệu: README, ARCHITECTURE, API, MULTIPLAYER, BUILD, MUSIC, ASSET_LICENSE
 | Owner rớt mạng (kill client) + chờ grace | **PASS** — sau 30s server tự đóng phòng và reset |
 | VPS thật + ticket thật: `--net-smoke=serverbar1.nguyenphuquyet.online:3221:<ticket> --dj-test` | **PASS** — join phòng thật, players=1, `library=72`, tải + phát MP3 `playing=true`, `dj_state` broadcast |
 | Chủ phòng rời phòng trên VPS | **PASS** — server log “Phòng đã đóng…”, backend room `closed`, members=0 |
+| VPS `705d56a` + 2 client thật: host `--dj-test --hold-dj`, guest vào giữa bài `--watch-dj` | **PASS** — guest bắt đầu `pos=14.35s`, tăng đều, `regressions=0`; host `load_ms=1533` |
+| VPS `705d56a` + host tải chậm 8s, guest vào lúc đang tải `--watch-dj` | **PASS** — guest đứng `pos=0` ~3s, sau đó phát từ `1.40s`, `regressions=0` (không lặp intro) |
+| VPS `705d56a` + `--reconnect-test` với ticket thật (login + room-code) | **PASS** — tự xin ticket mới qua backend, `online=true joined=true` |
 | API production: create → join → heartbeat → owner leave → delete | **PASS** — `leave` trả `{ok:true, closed:true}`, room `closed`, members=0; `heartbeat` 200 |
 | `prisma validate` | **PASS** |
 | `prisma generate` | **PASS** (Prisma 6.19.3) |
