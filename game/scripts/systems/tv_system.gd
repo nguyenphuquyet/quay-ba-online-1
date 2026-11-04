@@ -498,14 +498,14 @@ func _trim_video_cache(keep_path: String) -> void:
 			total -= size
 
 
-func _video_can_present() -> bool:
+func video_can_present() -> bool:
 	# native_video cần RenderingDevice (Forward+ hoặc Mobile). OpenGL Compatibility
 	# vẫn giải mã được nhưng không đưa được khung hình lên texture.
 	return RenderingServer.get_rendering_device() != null
 
 
 func video_backend_name() -> String:
-	if not _video_can_present():
+	if not video_can_present():
 		return "native_video (MP4/H.264) — máy đang dùng OpenGL, không hiển thị được video"
 	return "native_video (MP4/H.264)"
 
@@ -581,7 +581,7 @@ func _load_video(url: String, position: float, should_play: bool) -> void:
 	var stream_length := video_player.get_stream_length()
 	video_player.stream_position = clampf(position, 0.0, maxf(0.0, stream_length - 0.1))
 	video_player.paused = not should_play
-	if not _video_can_present():
+	if not video_can_present():
 		video_status.text = "Đã giải mã video nhưng máy chưa có Vulkan/D3D12 nên không hiển thị được. Hãy chạy Forward+ trên GPU hỗ trợ."
 		video_status.visible = true
 		return
@@ -639,7 +639,7 @@ func _process(delta: float) -> void:
 		if _sync_timer >= 6.0 and Net.can_control("tv"):
 			_sync_timer = 0.0
 			_publish_video_position()
-		if video_status != null and video_player != null and video_player.stream != null and _video_can_present():
+		if video_status != null and video_player != null and video_player.stream != null and video_can_present():
 			video_status.text = "%s  •  %s" % [_format_time(video_player.stream_position), _format_time(_video_length())]
 			video_status.visible = true
 

@@ -403,6 +403,10 @@ func _build_tv(host: Control) -> void:
 	var policy := QBOTheme.muted("Video phát trực tiếp bằng VideoStreamPlayer + addon native_video (MP4/H.264). Không dùng WebView, iframe hay tải video từ YouTube.", 12)
 	policy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	tab.add_child(policy)
+	if App.world != null and App.world.tv != null and not App.world.tv.video_can_present():
+		var warn := QBOTheme.label("Máy này chạy OpenGL Compatibility: video MP4 sẽ được giải mã nhưng không hiển thị. Hãy chạy Forward+ trên GPU hỗ trợ Vulkan/D3D12.", 12, QBOTheme.GOLD)
+		warn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		tab.add_child(warn)
 
 
 func _publish_tv() -> void:
