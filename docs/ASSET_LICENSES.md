@@ -13,7 +13,7 @@ Cập nhật: 2026-11-03
 
 ## 2. Tài nguyên hiện có trong repo
 
-Phần lớn tài nguyên là **tác phẩm gốc của dự án**, sinh bằng code hoặc hình học procedural. Ngoại lệ duy nhất là model nhân vật GLB tải từ Sketchfab dưới giấy phép CC-BY 4.0 (xem bảng bên dưới và `game/assets/models/characters/README.md`).
+Phần lớn tài nguyên là **tác phẩm gốc của dự án**, sinh bằng code hoặc hình học procedural. Các ngoại lệ là model nhân vật GLB (CC-BY 4.0), addon UI Game Menu Kit Lite và addon video `native_video` (MIT) — xem bảng bên dưới.
 
 | Tài nguyên | Loại | Nguồn | Giấy phép | Ghi chú |
 | --- | --- | --- | --- | --- |
@@ -24,6 +24,7 @@ Phần lớn tài nguyên là **tác phẩm gốc của dự án**, sinh bằng 
 | Nhạc demo “Chrome Lotus” | Audio tổng hợp | `game/scripts/systems/demo_track.gd` | Gốc dự án | 124 BPM, 12 giây loop, tổng hợp sin/noise; không lấy mẫu từ bản thu nào |
 | Icon | SVG | `game/icon.svg` | Gốc dự án | |
 | Game Menu Kit Lite | Addon UI Godot | Ryan — https://github.com/GameMenuKit/game-menu-kit-lite (vendored tại `tools/game-menu-kit-lite`, bản dùng trong game ở `game/addons/game_menu_kit`) | MIT | Menu chính/options; giữ nguyên `LICENSE` |
+| native_video | GDExtension phát MP4/MOV | Clay Tercek — https://github.com/claytercek/godot-native-video (vendored tại `game/addons/native_video`, v0.4.0) | MIT | Video TV lớn; binary Windows/macOS/Linux; giữ nguyên `LICENSE` |
 | Font UI | System font | Thiết bị người dùng | Font hệ điều hành | Dùng `SystemFont` (Segoe UI / Noto Sans / Roboto / Microsoft YaHei) — không phân phối lại font |
 | Logo chữ “QUẨY BAR ONLINE”, “The Chrome Lotus” | Text/Label3D | Dự án | Gốc dự án | Tên sản phẩm, không phải nhãn hiệu bên thứ ba |
 
