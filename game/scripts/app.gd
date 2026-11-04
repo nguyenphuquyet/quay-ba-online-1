@@ -771,8 +771,12 @@ func _run_net_smoke(target: String) -> void:
 	_load_world({"code": "NETSMOKE", "name": "Net Smoke", "maxPlayers": 8}, false)
 	Net.connect_to_room(host, port, ticket)
 	# Xác minh ticket đi vòng qua backend (có thể mất vài giây nếu server ở xa),
-	# nên chờ đủ lâu trước khi kết luận.
-	await get_tree().create_timer(12.0).timeout
+	# nên chờ đủ lâu trước khi kết luận. Riêng chế độ quan sát DJ cần bắt đầu
+	# lấy mẫu sớm để thấy lúc chủ phòng còn đang tải bài.
+	var join_wait := 12.0
+	if "--watch-dj" in AppConfig.launch_args:
+		join_wait = 3.0
+	await get_tree().create_timer(join_wait).timeout
 	var players_count := Net.players.size()
 	var scene_count := world.players.size() if world != null else 0
 	print("[NET-SMOKE] players=%d roster=%d scene=%d local=%d owner=%d connected=%s" % [players_count, Net.roster.size(), scene_count, Net.local_peer_id, Net.owner_id, str(Net.is_online())])
@@ -835,7 +839,13 @@ func _run_net_smoke(target: String) -> void:
 				# trước đây mỗi state này huỷ lượt tải và làm treo "Đang tải…".
 				if wait >= next_sync:
 					next_sync += 1.0
-					dj.call("_apply_state", dj.build_state())
+					var stress: Dictionary = dj.build_state()
+					stress["loading"] = false
+					stress["playing"] = true
+					stress["origin"] = -1
+					stress["position"] = 0.0
+					stress["updated_at"] = Time.get_unix_time_from_system()
+					dj.call("_apply_state", stress)
 			var load_ms := Time.get_ticks_msec() - load_started
 			print("[NET-SMOKE] dj playing=%s track=%s loading=%s load_ms=%d" % [str(dj.playing), dj.current_track_id, str(dj.is_loading_track()), load_ms])
 			if not dj.playing:
@@ -843,6 +853,48 @@ func _run_net_smoke(target: String) -> void:
 				printerr("[NET-SMOKE] FAIL: không phát được nhạc")
 			await get_tree().create_timer(1.5).timeout
 			print("[NET-SMOKE] dj_state_track=%s" % str(Net.dj_state.get("track_id", "")))
+	if ok and "--hold-dj" in AppConfig.launch_args:
+		# Giữ phòng và tiếp tục phát để máy thứ hai vào giữa bài kiểm tra
+		# xem có nhảy đúng vị trí hay phát lại từ đầu.
+		print("[NET-SMOKE] giữ phát 30s cho máy thứ hai vào giữa bài...")
+		await get_tree().create_timer(30.0).timeout
+	if ok and "--watch-dj" in AppConfig.launch_args:
+		# Máy thứ hai: chỉ quan sát. Không được phát từ 0 rồi bị kéo lặp lại
+		# đoạn đầu trong lúc chủ phòng còn đang tải bài.
+		var dj = world.dj
+		var waited := 0.0
+		while dj.library_loading and waited < 25.0:
+			await get_tree().create_timer(0.25).timeout
+			waited += 0.25
+		print("[NET-SMOKE] watch library=%d loading=%s" % [dj.track_count(), str(dj.library_loading)])
+		var watch_start := Time.get_ticks_msec()
+		var last_pos := -1.0
+		var started := false
+		var regressions := 0
+		var max_pos := 0.0
+		while Time.get_ticks_msec() - watch_start < 24000:
+			await get_tree().create_timer(1.0).timeout
+			var pos: float = dj.playback_position()
+			var is_playing: bool = dj.playing
+			var is_loading: bool = dj.is_loading_track()
+			var track_id: String = dj.current_track_id
+			print("[NET-SMOKE] watch t=%.0f playing=%s loading=%s pos=%.2f track=%s" % [
+				float(Time.get_ticks_msec() - watch_start) / 1000.0,
+				str(is_playing), str(is_loading), pos, track_id,
+			])
+			if is_playing and not is_loading:
+				if not started:
+					started = true
+					last_pos = pos
+				else:
+					if pos + 1.5 < last_pos:
+						regressions += 1
+					last_pos = pos
+				max_pos = maxf(max_pos, pos)
+		print("[NET-SMOKE] watch started=%s regressions=%d max_pos=%.2f" % [str(started), regressions, max_pos])
+		if not started or regressions > 0:
+			ok = false
+			printerr("[NET-SMOKE] FAIL: máy quan sát phát lặp/nhảy lùi đoạn đầu")
 	if ok and "--owner-leave" in AppConfig.launch_args:
 		# Kiểm tra chủ phòng chủ động rời -> server đóng phòng ngay.
 		var closed := [false]

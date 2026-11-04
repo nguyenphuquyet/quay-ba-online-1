@@ -94,7 +94,9 @@ func _process(delta: float) -> void:
 	if playing and _spectrum != null:
 		_detect_beat()
 	_sync_timer += delta
-	if playing and is_controller() and _sync_timer > SYNC_INTERVAL:
+	# Đang tải bài thì chưa có vị trí thật để đồng bộ; gửi sync lúc này sẽ làm
+	# máy khác phát từ 0 rồi bị kéo lặp lại đoạn đầu.
+	if playing and not is_loading_track() and is_controller() and _sync_timer > SYNC_INTERVAL:
 		_sync_timer = 0.0
 		_publish("sync")
 
@@ -281,6 +283,11 @@ func toggle_play() -> void:
 		_paused_position = _current_position()
 		playing = false
 		music.stream_paused = true
+		# Bấm tạm dừng khi đang tải: huỷ lượt tải, không để tải xong rồi tự phát.
+		if is_loading_track():
+			_load_seq += 1
+			_loading_track_id = ""
+			_pending_state = {}
 		_publish("pause")
 	else:
 		var track := _find_track(current_track_id)
@@ -348,15 +355,15 @@ func _begin_track(track: Dictionary, position: float, should_play: bool, broadca
 	if pending_track != "" and pending_track != str(track.get("id", "")):
 		_pending_state = {}
 	_set_current_track(track)
-	playing = should_play
-	if broadcast:
-		_publish("play")
 	if str(track.get("source", "")) == "demo":
+		playing = should_play
 		ensure_default_track()
 		music.stream = _demo_stream
 		music.volume_db = linear_to_db(maxf(volume, 0.001))
 		music.play(clampf(position, 0.0, maxf(0.0, _demo_stream.get_length() - 0.05)))
 		music.stream_paused = not should_play
+		if broadcast:
+			_publish("play" if should_play else "sync")
 		track_changed.emit()
 		_flush_pending_state()
 		return
@@ -364,11 +371,29 @@ func _begin_track(track: Dictionary, position: float, should_play: bool, broadca
 	var cached: AudioStream = _streams.get(track_id)
 	if cached != null:
 		_activate_stream(cached, position, should_play)
+		if broadcast:
+			_publish("play" if should_play else "sync")
 		_flush_pending_state()
 		return
+	# Chưa có stream: dừng bài cũ ngay và báo trạng thái "đang tải" (playing=false).
+	# Nhờ vậy máy khác tải trước nhưng nằm chờ, không phát từ 0 rồi bị kéo lặp
+	# lại đoạn đầu mỗi lần server đồng bộ.
 	_loading_track_id = track_id
+	playing = should_play
+	_paused_position = position
+	if music.stream != null:
+		music.stop()
+		music.stream = null
+	if broadcast:
+		_publish("sync")
 	if not AppConfig.is_dedicated:
 		App.toast("Đang tải “%s”…" % str(track.get("title", "bài hát")))
+	# Test-only: giả lập mạng chậm để kiểm tra máy khác chờ đúng, không lặp intro.
+	var load_delay := OS.get_environment("QBO_DJ_LOAD_DELAY")
+	if not AppConfig.is_dedicated and load_delay.is_valid_float() and float(load_delay) > 0.0:
+		await get_tree().create_timer(float(load_delay)).timeout
+		if seq != _load_seq or not is_inside_tree():
+			return
 	var stream := await _download_stream(track)
 	if seq != _load_seq or not is_inside_tree():
 		return
@@ -376,11 +401,33 @@ func _begin_track(track: Dictionary, position: float, should_play: bool, broadca
 	if stream == null:
 		playing = false
 		music.stream_paused = true
+		if broadcast:
+			_publish("sync")
 		App.toast("Không phát được bài này.", "error")
 		return
 	_streams[track_id] = stream
-	_activate_stream(stream, position, should_play)
+	var start := _resolve_start(track_id, position, should_play)
+	_activate_stream(stream, float(start[0]), bool(start[1]))
+	if broadcast:
+		_publish("play" if bool(start[1]) else "sync")
 	_flush_pending_state()
+
+
+## Chọn vị trí/trạng thái phát khi tải xong: ưu tiên state mới nhất đã nhận
+## trong lúc tải, để máy vào sau nhảy đúng chỗ thay vì phát lại từ đầu.
+func _resolve_start(track_id: String, position: float, should_play: bool) -> Array:
+	if _pending_state.is_empty():
+		return [position, should_play]
+	if str(_pending_state.get("track_id", "")) != track_id:
+		return [position, should_play]
+	if bool(_pending_state.get("loading", false)):
+		return [position, false]
+	var target_position := float(_pending_state.get("position", position))
+	var target_playing := bool(_pending_state.get("playing", should_play))
+	var updated_at := float(_pending_state.get("updated_at", 0.0))
+	if target_playing and updated_at > 0.0:
+		target_position += _elapsed_since(updated_at)
+	return [target_position, target_playing]
 
 
 ## Áp state mới nhất nhận được trong lúc đang tải bài (seek đúng vị trí phòng).
@@ -392,15 +439,59 @@ func _flush_pending_state() -> void:
 	_apply_state(pending)
 
 
+## Ghi đè ý muốn phát (pause/resume/seek) khi đang tải, để lúc tải xong mới áp.
+func _queue_loading_override(should_play: bool, position: float) -> void:
+	if _pending_state.is_empty():
+		_pending_state = build_state()
+	_pending_state["track_id"] = current_track_id
+	_pending_state["playing"] = should_play
+	_pending_state["loading"] = false
+	_pending_state["position"] = position
+	_pending_state["updated_at"] = Time.get_unix_time_from_system()
+
+
 func _activate_stream(stream: AudioStream, position: float, should_play: bool) -> void:
 	music.stream = stream
 	music.volume_db = linear_to_db(maxf(volume, 0.001))
 	var target := clampf(position, 0.0, maxf(0.0, stream.get_length() - 0.05))
-	music.play(target)
-	music.stream_paused = not should_play
-	playing = should_play
 	_paused_position = target
+	if should_play:
+		music.play(target)
+		music.stream_paused = false
+	else:
+		# Không gọi play() rồi pause ngay: một số driver audio vẫn chạy tiếp
+		# vài giây đầu. Giữ stream ở trạng thái dừng, chỉ play khi thật sự cần.
+		music.stop()
+		music.stream_paused = true
+	playing = should_play
 	track_changed.emit()
+
+
+## Tải trước bài của chủ phòng nhưng chưa phát, để lúc chủ phòng bấm play
+## máy này vào đúng vị trí ngay thay vì phát lại từ đầu.
+func _preload_track(track: Dictionary) -> void:
+	var track_id := str(track.get("id", ""))
+	if track_id == "" or _streams.has(track_id) or track_id == _loading_track_id:
+		return
+	_load_seq += 1
+	var seq := _load_seq
+	if current_track_id != track_id:
+		if music.stream != null:
+			music.stop()
+			music.stream = null
+		_set_current_track(track)
+		_paused_position = 0.0
+	playing = false
+	if music.stream != null:
+		music.stream_paused = true
+	_loading_track_id = track_id
+	var stream := await _download_stream(track)
+	if seq != _load_seq or not is_inside_tree():
+		return
+	_loading_track_id = ""
+	if stream != null:
+		_streams[track_id] = stream
+	_flush_pending_state()
 
 
 func _download_stream(track: Dictionary) -> AudioStream:
@@ -465,9 +556,14 @@ func handle_remote(action: String, payload: Dictionary) -> void:
 			_paused_position = _current_position()
 			playing = false
 			music.stream_paused = true
+			if is_loading_track():
+				_queue_loading_override(false, _paused_position)
 		"resume":
 			playing = true
 			music.stream_paused = false
+			if is_loading_track():
+				_queue_loading_override(true, _paused_position)
+				return
 			if not music.playing:
 				music.play(clampf(_paused_position, 0.0, maxf(0.0, _stream_length() - 0.05)))
 		"volume":
@@ -476,7 +572,9 @@ func handle_remote(action: String, payload: Dictionary) -> void:
 		"seek":
 			var position := float(payload.get("position", 0.0))
 			_paused_position = position
-			if music.stream != null:
+			if is_loading_track():
+				_queue_loading_override(playing, position)
+			elif music.stream != null:
 				music.seek(clampf(position, 0.0, maxf(0.0, _stream_length() - 0.05)))
 		"next":
 			_step_track(1, false)
@@ -490,6 +588,10 @@ func _apply_state(state: Dictionary) -> void:
 	if state.is_empty() or not state.has("track_id"):
 		return
 	var track_id := str(state.get("track_id", ""))
+	var loading := bool(state.get("loading", false))
+	# Bỏ qua echo trạng thái "đang tải" do chính máy này phát ra.
+	if loading and int(state.get("origin", -1)) == Net.local_peer_id:
+		return
 	var track := _find_track(track_id)
 	if track.is_empty():
 		if library_loading:
@@ -506,6 +608,15 @@ func _apply_state(state: Dictionary) -> void:
 	# và TV treo ở "Đang tải…" mãi mãi.
 	if track_id == _loading_track_id:
 		_pending_state = state.duplicate(true)
+		return
+	if loading:
+		# Chủ phòng đang tải bài mới: máy khác tải trước nhưng nằm chờ, không
+		# phát từ 0 để khỏi bị kéo lặp lại đoạn đầu mỗi lần đồng bộ.
+		_preload_track(track)
+		playing = false
+		if music.stream != null:
+			_paused_position = _current_position()
+			music.stream_paused = true
 		return
 	var target_playing := bool(state.get("playing", true))
 	var target_position := float(state.get("position", 0.0))
@@ -531,13 +642,18 @@ func _apply_state(state: Dictionary) -> void:
 
 
 func build_state() -> Dictionary:
+	var loading := is_loading_track()
 	return {
 		"track_id": current_track_id,
 		"title": current_title,
 		"artist": current_artist,
 		"cover_url": current_cover_url,
 		"url": current_url,
-		"playing": playing,
+		# Trong lúc tải chưa có vị trí thật: báo playing=false + loading=true để
+		# máy khác chờ, không phát từ 0.
+		"playing": playing and not loading,
+		"loading": loading,
+		"origin": Net.local_peer_id,
 		"position": _current_position(),
 		"volume": volume,
 		"duration": current_duration,

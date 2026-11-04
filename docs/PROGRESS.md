@@ -36,6 +36,7 @@ Phiên bản: 0.1.0 (nền tảng MVP)
 - [x] Booth DJ tải thư viện từ `https://music.nguyenphuquyet.online/api/songs?take=1000`, lọc và chỉ giữ MP3/OGG/WAV (ẩn 25 bài M4A/AAC mà Godot không giải mã native). Hiện có 72 bài phát được.
 - [x] Tải + giải mã audio từ API, cache stream/cover; play/pause/next/prev/volume/seek; beat detection bằng spectrum analyzer; nhạc demo tổng hợp gốc khi API lỗi.
 - [x] Sửa lỗi treo “Đang tải…” khi vào phòng: state đồng bộ 6 giây (kể cả echo từ server) không còn huỷ lượt tải đang chạy; state được xếp hàng và áp lại đúng vị trí sau khi tải xong. Timeout tải bài 90 giây, thư viện tự thử lại 2 lần.
+- [x] Đồng bộ lúc chủ phòng tải bài: state `loading` báo máy khác tải trước nhưng **chờ**, không phát từ 0; tải xong nhảy đúng vị trí hiện tại (kể cả vào giữa bài), không lặp lại đoạn đầu.
 - [x] 8 preset ánh sáng + intensity/speed/beat sync, LED động, moving head, strobe, đồng bộ server.
 - [x] TV state sync; TV lớn 20:9 phát màn nhạc DJ (bìa, tên bài, tiến trình, EQ) và video MP4/MOV/M4V/OGV trực tiếp; TV nhỏ hiển thị thông tin nhà phát triển. Vị trí video được gửi lại mỗi 6 giây; chênh lệch đồng hồ giữa hai máy >15 giây bị bỏ qua thay vì seek sai.
 - [x] Video MP4/H.264 dùng GDExtension `claytercek/godot-native-video` v0.4.0 (`native_video`), tải về cache rồi phát bằng `VideoStreamPlayer`; giữ tỉ lệ 16:9 trên màn 20:9.
@@ -114,6 +115,8 @@ Tài liệu: README, ARCHITECTURE, API, MULTIPLAYER, BUILD, MUSIC, ASSET_LICENSE
 | Server + 2 client: `--net-smoke=7013 --tv-url=…` (owner) và `--net-smoke=7013 --watch-tv=…` | **PASS** — client 2 vào sau nhận đúng URL MP4 qua broadcast (`tv_received`), players=2, scene=2 |
 | `--net-smoke=7019 --reconnect-test` | **PASS** — giả lập mất kết nối, tự nối lại (`online=true joined=true`), server thấy peer mới join lại |
 | `--net-smoke=7014 --dj-test` + echo sync mỗi 1s trong lúc tải | **PASS** — tải xong MP3 (`load_ms=3810`), `playing=true`; state đồng bộ không còn huỷ lượt tải (trước đây treo “Đang tải…” vô hạn) |
+| Server + host `--dj-test` (giả lập mạng chậm 8s) + guest `--watch-dj` | **PASS** — guest đứng ở `pos=0` trong lúc chủ phòng tải, chỉ phát khi chủ phòng xong; `regressions=0` |
+| Server + host `--dj-test --hold-dj` + guest vào giữa bài `--watch-dj` | **PASS** — guest bắt đầu ở `pos=15.49s` (không phát lại từ 0), tăng đều, `regressions=0` |
 | `--net-smoke=7017 --owner-leave` | **PASS** — chủ phòng rời → client nhận `cli_room_closed`, server log “Phòng đã đóng, server sẵn sàng nhận phòng mới” |
 | Owner rớt mạng (kill client) + chờ grace | **PASS** — sau 30s server tự đóng phòng và reset |
 | VPS thật + ticket thật: `--net-smoke=serverbar1.nguyenphuquyet.online:3221:<ticket> --dj-test` | **PASS** — join phòng thật, players=1, `library=72`, tải + phát MP3 `playing=true`, `dj_state` broadcast |

@@ -55,6 +55,14 @@ Server yêu cầu `QBO_GAME_SECRET` khớp `GAME_SERVER_SECRET` của backend. N
 - TV: chỉ nhận video trực tiếp (mp4/mov/m4v/ogv); server lưu state cuối, người vào sau nhận ngay.
 - Roster/owner: server chọn owner đầu tiên; quyền owner **không** chuyển cho người khác. Chủ phòng rời → phòng đóng.
 
+### 4.1 Đồng bộ nhạc trong phòng
+
+- Chủ phòng/DJ tải bài trước. Trong lúc tải, state gửi đi có `loading=true`, `playing=false`, nên máy khác **không phát từ 0**.
+- Máy khác nhận state `loading` sẽ tải trước vào cache nhưng nằm chờ; tải xong cũng chưa phát.
+- Khi chủ phòng tải xong, state `play` có `position` + `updated_at`. Máy nào tải xong sẽ nhảy đúng vị trí đã trôi qua (giới hạn 15 giây để tránh lệch đồng hồ), không lặp lại đoạn đầu.
+- Máy vào giữa bài tải xong sẽ seek đến vị trí hiện tại của phòng.
+- Godot cần toàn bộ file MP3/OGG/WAV để giải mã native nên không stream theo chunk; thay vào đó tải nền + chờ/jump theo timeline.
+
 ## 5. Reconnect
 
 - Client gửi `srv_ping` mỗi 3 giây; quá **12 giây** không có `cli_pong` → coi như mất mạng và bắt đầu reconnect (không cần chờ ENet timeout).
