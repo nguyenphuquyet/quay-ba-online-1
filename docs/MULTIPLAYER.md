@@ -35,7 +35,7 @@ Server yêu cầu `QBO_GAME_SECRET` khớp `GAME_SERVER_SECRET` của backend. N
 | `srv_chat` / `cli_chat` | C→S→C | reliable | member + rate limit 8/5s | Chat phòng |
 | `srv_interact` / `cli_interaction` | C→S→C | reliable | phụ thuộc action | Tương tác nội thất, mở UI, đổi state |
 | `srv_lighting` / `cli_lighting` | C→S→C | reliable | owner hoặc `lighting_allowed` | Preset, intensity, speed |
-| `srv_dj` / `cli_dj` | C→S→C | reliable | owner hoặc `dj_allowed` | Playlist, play/pause, volume, URL |
+| `srv_dj` / `cli_dj` | C→S→C | reliable | owner hoặc `dj_allowed` | Track trong thư viện API, play/pause, position, volume |
 | `srv_tv` / `cli_tv` | C→S→C | reliable | owner hoặc `tv_allowed` | URL, play/pause, position, volume |
 | `srv_room_settings` / `cli_room_settings` | C→S→C | reliable | owner | Khóa quyền, cấp quyền |
 | `cli_kicked` | S→C | reliable | owner | Mời ra |
@@ -48,8 +48,8 @@ Server yêu cầu `QBO_GAME_SECRET` khớp `GAME_SERVER_SECRET` của backend. N
 - Ghế/thang máy: server cập nhật vị trí chuẩn trước khi broadcast để không tự kéo người chơi về.
 - Chat: rate limit 8 tin/5 giây, cắt 240 ký tự.
 - Đèn: whitelist 8 preset; intensity 0–4.
-- DJ: whitelist action; URL http/https.
-- TV: server lưu state cuối, người vào sau nhận ngay.
+- DJ: whitelist action; `track_id` phải có trong thư viện API đã tải.
+- TV: chỉ nhận video trực tiếp (mp4/mov/m4v/ogv); server lưu state cuối, người vào sau nhận ngay.
 - Roster/owner: server chọn owner đầu tiên; owner rời → chuyển cho peer còn lại.
 
 ## 5. Reconnect

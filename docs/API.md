@@ -1,6 +1,7 @@
 # API — QUẨY BAR ONLINE (Next.js App Router)
 
 Base URL dev: `http://127.0.0.1:3000`
+> Thư viện nhạc DJ dùng API riêng `music.nguyenphuquyet.online` — xem [MUSIC.md](MUSIC.md).
 Auth: `Authorization: Bearer <accessToken>` (Godot) **hoặc** cookie `qbo_access` (web).
 Mọi response lỗi có dạng:
 

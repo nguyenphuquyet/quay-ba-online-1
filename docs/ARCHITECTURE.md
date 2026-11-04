@@ -114,7 +114,7 @@ server/
 | Gian lận ticket | Ticket random 256-bit, hash SHA-256, single-use, TTL 5 phút, secret server-server |
 | Brute force login | bcrypt + rate limit + thông báo lỗi mơ hồ |
 | Refresh token theft | Rotation + reuse detection + thu hồi toàn bộ |
-| SSRF từ TV/browser | `QBOUrlGuard` chặn localhost/private/metadata; chỉ http/https |
+| SSRF từ URL media | `QBOUrlGuard` chặn localhost/private/metadata (IPv4, IPv6, `user:pass@`); chỉ http/https và media trực tiếp |
 | XSS trên landing | React escape, không render HTML thô từ user |
 | CSRF | Cookie sameSite=lax + kiểm tra Origin cho mutation dùng cookie |
 | Lộ password phòng | Chỉ trả `hasPassword`, hash bcrypt |
