@@ -20,7 +20,7 @@ Phiên bản: 0.1.0 (nền tảng MVP)
 - [x] ENet join bằng game ticket, server authority vị trí, correction, chat, interaction, roster.
 - [x] Đồng bộ animation, seating, DJ state, lighting, TV state.
 - [x] Reconnect 3 lần với ticket mới.
-- [x] **Kiểm chứng 2 tiến trình**: server + client smoke test pass (xem mục 5).
+- [x] **Kiểm chứng 2 tiến trình**: server + client smoke test pass; server + 2 client pass, client vào sau nhận đúng TV state (URL MP4) qua broadcast (xem mục 5).
 
 ### Phase 3 — Backend
 - [x] Next.js App Router 16, TypeScript strict, Prisma 6.19, MySQL schema.
@@ -97,7 +97,7 @@ Tài liệu: README, ARCHITECTURE, API, MULTIPLAYER, BUILD, ASSET_LICENSES, PROG
 6. **Anti-cheat** mới ở mức displacement; chưa simulate physics server-side.
 7. **Animation** là procedural + GLB clip, chất lượng thấp hơn asset authored.
 8. **API nhạc** phụ thuộc dịch vụ ngoài; nếu API lỗi, booth DJ tự lùi về track demo tổng hợp.
-9. **Video cache** giới hạn 300 MB mỗi tệp, không tự dọn; cần dọn `user://tv_video_cache` khi đầy.
+9. **Video cache**: mỗi tệp giới hạn 300 MB, lưu ở `user://tv_video_cache`; bảng TV đã có nút xoá cache và hiển thị dung lượng, nhưng chưa tự dọn khi vượt ngưỡng.
 
 ## 5. Lệnh kiểm thử đã chạy và kết quả
 
@@ -105,10 +105,11 @@ Tài liệu: README, ARCHITECTURE, API, MULTIPLAYER, BUILD, ASSET_LICENSES, PROG
 | --- | --- |
 | `Godot --headless --path game --editor --quit` | Import project OK, class cache OK, không còn lỗi GDExtension |
 | `Godot --headless --path game --fixed-fps 60 -- --smoke` | **PASS** — interactables=27, players=1, 5 moving heads, demo track 12s/32kHz, TV music screen ready, di chuyển OK, ngồi/đứng OK |
-| `Godot --headless --path game -- --media-test` | **PASS** — API trả 71 bài phát được; audio MP3 tải/giải mã OK (373.5s, playing); TV tải/giải mã MP4 OK (NativeVideoStream 10.00s) |
+| `Godot --headless --path game -- --media-test` | **PASS** — API trả 71 bài phát được; audio MP3 tải/giải mã OK (373.5s, playing); TV tải/giải mã MP4 OK (NativeVideoStream 10.00s); cache video xoá sạch qua `clear_video_cache()` |
 | `Godot --headless --path game -- --ui-test` | **PASS** — overlay máy tính, DJ và TV mở/đóng không lỗi runtime |
 | `Godot --path game -- --screenshot` | **PASS** — `tv_ui.png` 1280×576 (TV lớn) và `tv_dev.png` 1280×720 (TV nhỏ), 6 ảnh QA sân khấu/bar/VIP |
 | `Godot --headless --path game -- --server --port=7001 --allow-unverified-tickets` + `--net-smoke=7001` | **PASS** — players=1, roster=1, connected=true, di chuyển OK, interaction server broadcast OK |
+| Server + 2 client: `--net-smoke=7013 --tv-url=…` (owner) và `--net-smoke=7013 --watch-tv=…` | **PASS** — client 2 vào sau nhận đúng URL MP4 qua broadcast (`tv_received`), players=2, scene=2 |
 | `prisma validate` | **PASS** |
 | `prisma generate` | **PASS** (Prisma 6.19.3) |
 | `tsc --noEmit` | **PASS** |
@@ -128,10 +129,10 @@ Godot --path game -- --screenshot
 
 1. Đánh giá/tinh chỉnh ảnh render: độ sáng, màu, bố cục, vật liệu.
 2. Kiểm thử MP4 trên máy có Vulkan/D3D12 để xác nhận khung hình hiển thị trên TV lớn.
-3. Test 2 máy thật qua Internet với dedicated server + domain/TLS; kiểm tra đồng bộ DJ/TV.
+3. Test 2 máy thật qua Internet với dedicated server + domain/TLS; đồng bộ DJ/TV đã pass trên 2 tiến trình cùng máy nhưng chưa qua mạng thật.
 4. Voice chat WebRTC (signaling qua Next.js route + SFU).
 5. Export Android thử trên thiết bị; tinh chỉnh mobile UI/perf.
-6. Dọn cache video và thêm nút "xoá cache" trong bảng điều khiển TV.
+6. Theo dõi dung lượng cache video và tự dọn khi vượt ngưỡng (nút xoá thủ công đã có trong bảng TV).
 7. Tài liệu hoá API nhạc và luồng thêm bài hát mới.
 
 ## 8. Ghi chú phát triển

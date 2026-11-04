@@ -25,6 +25,7 @@ var _dj_cover_url := ""
 var _tv_url: LineEdit
 var _tv_state: Label
 var _tv_provider: Label
+var _tv_cache: Label
 var _tv_volume: HSlider
 var _tv_play: Button
 var _tv_publish: Button
@@ -390,6 +391,15 @@ func _build_tv(host: Control) -> void:
 	)
 	controls.add_child(_tv_volume)
 
+	var cache_row := QBOTheme.hbox(10)
+	tab.add_child(cache_row)
+	_tv_cache = QBOTheme.muted("", 12)
+	_tv_cache.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cache_row.add_child(_tv_cache)
+	var clear_cache := QBOTheme.button("Xoá cache video")
+	clear_cache.pressed.connect(_clear_video_cache)
+	cache_row.add_child(clear_cache)
+
 	var policy := QBOTheme.muted("Video phát trực tiếp bằng VideoStreamPlayer + addon native_video (MP4/H.264). Không dùng WebView, iframe hay tải video từ YouTube.", 12)
 	policy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	tab.add_child(policy)
@@ -429,7 +439,38 @@ func _refresh_tv_state() -> void:
 			str(state.get("by", "—")),
 		]
 		_tv_provider.text = "%s  •  %s" % [str(state.get("url", "")), "đang phát" if bool(state.get("playing", false)) else "tạm dừng"]
+	_refresh_tv_cache()
 	_refresh_tv_permissions()
+
+
+func _refresh_tv_cache() -> void:
+	if _tv_cache == null:
+		return
+	var stats: Dictionary = App.world.tv.video_cache_stats() if App.world != null and App.world.tv != null else {}
+	var files := int(stats.get("files", 0))
+	var total := int(stats.get("bytes", 0))
+	_tv_cache.text = "Cache video: %d tệp • %s" % [files, _format_bytes(total)]
+
+
+func _clear_video_cache() -> void:
+	if App.world == null or App.world.tv == null:
+		return
+	var result: Dictionary = App.world.tv.clear_video_cache()
+	if bool(result.get("ok", false)):
+		ui.call("toast", "Đã xoá %d tệp cache video." % int(result.get("removed", 0)), "success")
+	else:
+		ui.call("toast", str(result.get("reason", "Không xoá được cache.")), "warn")
+	_refresh_tv_cache()
+
+
+func _format_bytes(value: int) -> String:
+	if value >= 1024 * 1024 * 1024:
+		return "%.2f GB" % (float(value) / (1024.0 * 1024.0 * 1024.0))
+	if value >= 1024 * 1024:
+		return "%.1f MB" % (float(value) / (1024.0 * 1024.0))
+	if value >= 1024:
+		return "%.0f KB" % (float(value) / 1024.0)
+	return "%d B" % value
 
 
 func _refresh_tv_permissions() -> void:

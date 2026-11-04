@@ -130,6 +130,11 @@ tools/godot/Godot_v4.7.2-stable_win64_console.exe --headless --path game -- --ui
 godot --headless --path game -- --server --port=7001 --allow-unverified-tickets
 godot --headless --path game --fixed-fps 60 -- --net-smoke=7001
 
+# Godot: 3 tiến trình — server + 2 client, client sau phải nhận đúng URL MP4 của TV
+godot --headless --path game -- --server --port=7013 --allow-unverified-tickets
+godot --headless --path game -- --net-smoke=7013 --tv-url=https://…/video.mp4
+godot --headless --path game -- --net-smoke=7013 --watch-tv=https://…/video.mp4
+
 # Backend
 cd server && npx prisma validate && npx prisma generate && npm run typecheck && npm run build
 ```

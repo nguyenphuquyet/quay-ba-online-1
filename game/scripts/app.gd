@@ -308,6 +308,18 @@ func _run_media_test() -> void:
 			print("[MEDIA-TEST] video stream=%s length=%.2fs playing=%s pos=%.2f" % [vstream.get_class(), vlength, str(world.tv.video_player.is_playing()), world.tv.video_player.stream_position])
 			if vlength <= 0.0:
 				failures.append("video stream có độ dài 0")
+	# Cache video: thống kê, dừng video rồi xoá sạch.
+	var cache_before: Dictionary = world.tv.video_cache_stats()
+	world.tv.stop_video()
+	await get_tree().create_timer(0.5).timeout
+	var cleared: Dictionary = world.tv.clear_video_cache()
+	var cache_after: Dictionary = world.tv.video_cache_stats()
+	print("[MEDIA-TEST] video cache: %d tệp / %d bytes -> xoá %d, còn %d" % [
+		int(cache_before.get("files", 0)), int(cache_before.get("bytes", 0)),
+		int(cleared.get("removed", 0)), int(cache_after.get("files", 0)),
+	])
+	if not bool(cleared.get("ok", false)) or int(cache_after.get("files", 0)) != 0:
+		failures.append("không xoá được cache video")
 	var elapsed := Time.get_ticks_msec() - started
 	if failures.is_empty():
 		print("[MEDIA-TEST] OK trong %d ms" % elapsed)
@@ -654,9 +666,12 @@ func _run_net_smoke(target: String) -> void:
 	print("[NET-SMOKE] kết nối tới %s:%d (ticket %s)" % [host, port, "dev" if ticket == "dev-ticket" else "thật"])
 	# Tuỳ chọn: --tv-url=https://…/video.mp4 để kiểm tra đồng bộ TV.
 	var tv_url := ""
+	var watch_url := ""
 	for arg in AppConfig.launch_args:
 		if arg.begins_with("--tv-url="):
 			tv_url = arg.trim_prefix("--tv-url=")
+		elif arg.begins_with("--watch-tv="):
+			watch_url = arg.trim_prefix("--watch-tv=")
 	Net.tv_received.connect(func(state: Dictionary):
 		print("[NET-SMOKE] tv_received url=%s kind=%s" % [str(state.get("url", "")), str(state.get("kind", ""))]))
 	Net.player_joined.connect(func(id: int, _info: Dictionary):
@@ -676,7 +691,15 @@ func _run_net_smoke(target: String) -> void:
 	if ok and scene_count != players_count:
 		ok = false
 		printerr("[NET-SMOKE] FAIL: scene có %d người nhưng phòng có %d" % [scene_count, players_count])
-	if ok and tv_url != "":
+	if ok and watch_url != "":
+		# Client thứ hai chỉ quan sát: xác nhận nhận được đúng trạng thái TV
+		# do client đầu gửi, kể cả khi vào phòng sau.
+		var watched := str(Net.tv_state.get("url", ""))
+		print("[NET-SMOKE] watch tv_state=%s" % watched)
+		if watched != watch_url:
+			ok = false
+			printerr("[NET-SMOKE] FAIL: không nhận được TV state từ client khác (nhận '%s')" % watched)
+	elif ok and tv_url != "":
 		Net.send_tv({"url": tv_url, "title": "TV sync test", "playing": true, "kind": "video", "status": "Đồng bộ TV", "volume": 1.0, "position": 0.0, "updated_at": Time.get_unix_time_from_system()})
 		await get_tree().create_timer(3.0).timeout
 		var got := str(Net.tv_state.get("url", ""))

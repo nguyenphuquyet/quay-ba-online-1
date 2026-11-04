@@ -416,6 +416,45 @@ func video_available() -> bool:
 	return true
 
 
+## Dung lượng cache video hiện tại (TV lớn tải mỗi video về đĩa một lần).
+func video_cache_stats() -> Dictionary:
+	var files := 0
+	var total := 0
+	var dir := DirAccess.open(VIDEO_CACHE_DIR)
+	if dir == null:
+		return {"files": files, "bytes": total}
+	dir.list_dir_begin()
+	var entry := dir.get_next()
+	while entry != "":
+		if not dir.current_is_dir():
+			var file := FileAccess.open(VIDEO_CACHE_DIR + "/" + entry, FileAccess.READ)
+			if file != null:
+				files += 1
+				total += file.get_length()
+				file.close()
+		entry = dir.get_next()
+	dir.list_dir_end()
+	return {"files": files, "bytes": total}
+
+
+## Xoá cache video. Từ chối khi TV đang phát video để không làm hỏng stream.
+func clear_video_cache() -> Dictionary:
+	if str(current_state.get("kind", "")) == "video":
+		return {"ok": false, "reason": "Hãy trở về màn nhạc DJ trước khi xoá cache video."}
+	var removed := 0
+	var dir := DirAccess.open(VIDEO_CACHE_DIR)
+	if dir == null:
+		return {"ok": true, "removed": removed}
+	dir.list_dir_begin()
+	var entry := dir.get_next()
+	while entry != "":
+		if not dir.current_is_dir() and dir.remove(entry) == OK:
+			removed += 1
+		entry = dir.get_next()
+	dir.list_dir_end()
+	return {"ok": true, "removed": removed}
+
+
 func _video_can_present() -> bool:
 	# native_video cần RenderingDevice (Forward+ hoặc Mobile). OpenGL Compatibility
 	# vẫn giải mã được nhưng không đưa được khung hình lên texture.
