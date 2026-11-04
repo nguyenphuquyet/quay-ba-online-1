@@ -97,7 +97,7 @@ Tài liệu: README, ARCHITECTURE, API, MULTIPLAYER, BUILD, ASSET_LICENSES, PROG
 6. **Anti-cheat** mới ở mức displacement; chưa simulate physics server-side.
 7. **Animation** là procedural + GLB clip, chất lượng thấp hơn asset authored.
 8. **API nhạc** phụ thuộc dịch vụ ngoài; nếu API lỗi, booth DJ tự lùi về track demo tổng hợp.
-9. **Video cache**: mỗi tệp giới hạn 300 MB, lưu ở `user://tv_video_cache`; bảng TV đã có nút xoá cache và hiển thị dung lượng, nhưng chưa tự dọn khi vượt ngưỡng.
+9. **Video cache**: mỗi tệp giới hạn 300 MB, tổng cache tự dọn tệp cũ nhất khi vượt 1.5 GB; bảng TV có nút xoá thủ công và hiển thị dung lượng.
 10. **Đồng bộ theo đồng hồ máy**: `updated_at` dùng giờ hệ thống của client gửi; nếu hai máy lệch >15 giây thì phần bù thời gian bị bỏ qua và chỉ còn sync định kỳ 6 giây. Chưa có server-authoritative clock.
 
 ## 5. Lệnh kiểm thử đã chạy và kết quả
@@ -133,7 +133,7 @@ Godot --path game -- --screenshot
 3. Test 2 máy thật qua Internet với dedicated server + domain/TLS; đồng bộ DJ/TV đã pass trên 2 tiến trình cùng máy nhưng chưa qua mạng thật.
 4. Voice chat WebRTC (signaling qua Next.js route + SFU).
 5. Export Android thử trên thiết bị; tinh chỉnh mobile UI/perf.
-6. Theo dõi dung lượng cache video và tự dọn khi vượt ngưỡng (nút xoá thủ công đã có trong bảng TV).
+6. Kiểm thử tự dọn cache video với thư viện nhiều video lớn (hiện mới test xoá thủ công).
 7. Tài liệu hoá API nhạc và luồng thêm bài hát mới.
 
 ## 8. Ghi chú phát triển

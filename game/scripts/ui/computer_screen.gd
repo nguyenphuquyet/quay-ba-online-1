@@ -449,7 +449,7 @@ func _refresh_tv_cache() -> void:
 	var stats: Dictionary = App.world.tv.video_cache_stats() if App.world != null and App.world.tv != null else {}
 	var files := int(stats.get("files", 0))
 	var total := int(stats.get("bytes", 0))
-	_tv_cache.text = "Cache video: %d tệp • %s" % [files, _format_bytes(total)]
+	_tv_cache.text = "Cache video: %d tệp • %s (tự dọn khi vượt 1.5 GB)" % [files, _format_bytes(total)]
 
 
 func _clear_video_cache() -> void:

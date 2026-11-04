@@ -12,6 +12,8 @@ const SCREEN_SIZE := Vector2i(1280, 576)
 const DEV_SIZE := Vector2i(1280, 720)
 const VIDEO_CACHE_DIR := "user://tv_video_cache"
 const MAX_VIDEO_BYTES := 300 * 1024 * 1024
+## Tổng dung lượng cache video; vượt ngưỡng thì xoá tệp cũ nhất trước.
+const MAX_CACHE_BYTES := 1536 * 1024 * 1024
 
 var world: Nightclub
 var viewport: SubViewport
@@ -457,6 +459,45 @@ func clear_video_cache() -> Dictionary:
 	return {"ok": true, "removed": removed}
 
 
+## Giữ tổng cache dưới MAX_CACHE_BYTES bằng cách xoá tệp cũ nhất (LRU theo mtime).
+func _trim_video_cache(keep_path: String) -> void:
+	var stats := video_cache_stats()
+	var total := int(stats.get("bytes", 0))
+	if total <= MAX_CACHE_BYTES:
+		return
+	var entries: Array = []
+	var dir := DirAccess.open(VIDEO_CACHE_DIR)
+	if dir == null:
+		return
+	dir.list_dir_begin()
+	var entry := dir.get_next()
+	while entry != "":
+		if not dir.current_is_dir():
+			var path := VIDEO_CACHE_DIR + "/" + entry
+			entries.append({
+				"name": entry,
+				"path": path,
+				"time": FileAccess.get_modified_time(path),
+			})
+		entry = dir.get_next()
+	dir.list_dir_end()
+	entries.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return int(a["time"]) < int(b["time"])
+	)
+	for item in entries:
+		if total <= MAX_CACHE_BYTES:
+			break
+		if str(item["path"]) == keep_path:
+			continue
+		var size := 0
+		var file := FileAccess.open(str(item["path"]), FileAccess.READ)
+		if file != null:
+			size = file.get_length()
+			file.close()
+		if dir.remove(str(item["name"])) == OK:
+			total -= size
+
+
 func _video_can_present() -> bool:
 	# native_video cần RenderingDevice (Forward+ hoặc Mobile). OpenGL Compatibility
 	# vẫn giải mã được nhưng không đưa được khung hình lên texture.
@@ -526,6 +567,7 @@ func _load_video(url: String, position: float, should_play: bool) -> void:
 			return
 		file.store_buffer(body)
 		file.close()
+		_trim_video_cache(cache_path)
 	if seq != _video_seq or not is_inside_tree():
 		return
 	var stream := _load_video_stream(cache_path, ext)
