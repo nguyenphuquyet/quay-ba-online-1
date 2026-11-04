@@ -418,9 +418,14 @@ func _run_ui_test() -> void:
 	print("[UI-TEST] mở overlay DJ + máy tính")
 	var failures: Array = []
 	_boot_client()
-	# Chờ splash (1.4s) chuyển xong sang login/main_menu rồi mới vào game,
-	# tránh việc show_screen đóng overlay vừa mở.
-	await get_tree().create_timer(2.2).timeout
+	# Chờ splash chuyển xong sang login/main_menu rồi mới vào game, tránh việc
+	# show_screen đóng overlay vừa mở. Không dùng mốc thời gian cố định: nếu
+	# phiên đăng nhập còn hạn, boot() còn await Api.me() nên có thể lâu hơn.
+	var boot_wait := 0.0
+	while ui != null and str(ui.get("current_screen")) == "splash" and boot_wait < 12.0:
+		await get_tree().create_timer(0.2).timeout
+		boot_wait += 0.2
+	await get_tree().create_timer(0.4).timeout
 	start_solo()
 	await get_tree().create_timer(1.0).timeout
 	if ui == null:

@@ -33,8 +33,9 @@ Phiên bản: 0.1.0 (nền tảng MVP)
 - [x] `prisma validate` + `prisma generate` + `tsc --noEmit` + `next build` **pass**.
 
 ### Phase 5 — Nightclub systems
-- [x] Booth DJ tải thư viện từ `https://music.nguyenphuquyet.online/api/songs?take=1000`, lọc và chỉ giữ MP3/OGG/WAV (ẩn 25 bài M4A/AAC mà Godot không giải mã native). Hiện có 71 bài phát được.
+- [x] Booth DJ tải thư viện từ `https://music.nguyenphuquyet.online/api/songs?take=1000`, lọc và chỉ giữ MP3/OGG/WAV (ẩn 25 bài M4A/AAC mà Godot không giải mã native). Hiện có 72 bài phát được.
 - [x] Tải + giải mã audio từ API, cache stream/cover; play/pause/next/prev/volume/seek; beat detection bằng spectrum analyzer; nhạc demo tổng hợp gốc khi API lỗi.
+- [x] Sửa lỗi treo “Đang tải…” khi vào phòng: state đồng bộ 6 giây (kể cả echo từ server) không còn huỷ lượt tải đang chạy; state được xếp hàng và áp lại đúng vị trí sau khi tải xong. Timeout tải bài 90 giây, thư viện tự thử lại 2 lần.
 - [x] 8 preset ánh sáng + intensity/speed/beat sync, LED động, moving head, strobe, đồng bộ server.
 - [x] TV state sync; TV lớn 20:9 phát màn nhạc DJ (bìa, tên bài, tiến trình, EQ) và video MP4/MOV/M4V/OGV trực tiếp; TV nhỏ hiển thị thông tin nhà phát triển. Vị trí video được gửi lại mỗi 6 giây; chênh lệch đồng hồ giữa hai máy >15 giây bị bỏ qua thay vì seek sai.
 - [x] Video MP4/H.264 dùng GDExtension `claytercek/godot-native-video` v0.4.0 (`native_video`), tải về cache rồi phát bằng `VideoStreamPlayer`; giữ tỉ lệ 16:9 trên màn 20:9.
@@ -106,7 +107,7 @@ Tài liệu: README, ARCHITECTURE, API, MULTIPLAYER, BUILD, MUSIC, ASSET_LICENSE
 | --- | --- |
 | `Godot --headless --path game --editor --quit` | Import project OK, class cache OK, không còn lỗi GDExtension |
 | `Godot --headless --path game --fixed-fps 60 -- --smoke` | **PASS** — interactables=27, players=1, 5 moving heads, demo track 12s/32kHz, TV music screen ready, di chuyển OK, ngồi/đứng OK, URL guard chặn 8 URL nội bộ |
-| `Godot --headless --path game -- --media-test` | **PASS** — API trả 71 bài phát được; audio MP3 tải/giải mã OK (373.5s, playing); TV tải/giải mã MP4 OK (NativeVideoStream 10.00s); cache video xoá sạch qua `clear_video_cache()`; auto-trim LRU xoá đúng tệp cũ và giữ tệp vừa tải |
+| `Godot --headless --path game -- --media-test` | **PASS** — API trả 72 bài phát được; audio MP3 tải/giải mã OK (373.5s, playing); TV tải/giải mã MP4 OK (NativeVideoStream 10.00s); cache video xoá sạch qua `clear_video_cache()`; auto-trim LRU xoá đúng tệp cũ và giữ tệp vừa tải |
 | `Godot --headless --path game -- --ui-test` | **PASS** — overlay máy tính, DJ và TV mở/đóng không lỗi runtime |
 | `Godot --path game -- --screenshot` | **PASS** — `tv_ui.png` 1280×576 (TV lớn) và `tv_dev.png` 1280×720 (TV nhỏ), 6 ảnh QA sân khấu/bar/VIP |
 | `Godot --headless --path game -- --server --port=7001 --allow-unverified-tickets` + `--net-smoke=7001` | **PASS** — players=1, roster=1, connected=true, di chuyển OK, interaction server broadcast OK |

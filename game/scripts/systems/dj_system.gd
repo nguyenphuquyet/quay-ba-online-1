@@ -343,6 +343,10 @@ func _publish(action: String) -> void:
 func _begin_track(track: Dictionary, position: float, should_play: bool, broadcast: bool) -> void:
 	_load_seq += 1
 	var seq := _load_seq
+	# State đang chờ của bài khác thì bỏ, tránh quay lại bài cũ sau khi tải xong.
+	var pending_track := str(_pending_state.get("track_id", ""))
+	if pending_track != "" and pending_track != str(track.get("id", "")):
+		_pending_state = {}
 	_set_current_track(track)
 	playing = should_play
 	if broadcast:
@@ -354,11 +358,13 @@ func _begin_track(track: Dictionary, position: float, should_play: bool, broadca
 		music.play(clampf(position, 0.0, maxf(0.0, _demo_stream.get_length() - 0.05)))
 		music.stream_paused = not should_play
 		track_changed.emit()
+		_flush_pending_state()
 		return
 	var track_id := str(track.get("id", ""))
 	var cached: AudioStream = _streams.get(track_id)
 	if cached != null:
 		_activate_stream(cached, position, should_play)
+		_flush_pending_state()
 		return
 	_loading_track_id = track_id
 	if not AppConfig.is_dedicated:
@@ -374,6 +380,16 @@ func _begin_track(track: Dictionary, position: float, should_play: bool, broadca
 		return
 	_streams[track_id] = stream
 	_activate_stream(stream, position, should_play)
+	_flush_pending_state()
+
+
+## Áp state mới nhất nhận được trong lúc đang tải bài (seek đúng vị trí phòng).
+func _flush_pending_state() -> void:
+	if _pending_state.is_empty():
+		return
+	var pending := _pending_state
+	_pending_state = {}
+	_apply_state(pending)
 
 
 func _activate_stream(stream: AudioStream, position: float, should_play: bool) -> void:
@@ -393,7 +409,7 @@ func _download_stream(track: Dictionary) -> AudioStream:
 	if not check["ok"] or str(check["kind"]) != "audio":
 		return null
 	var http := HTTPRequest.new()
-	http.timeout = 30.0
+	http.timeout = 90.0
 	http.max_redirects = 4
 	add_child(http)
 	var headers := PackedStringArray([
@@ -485,6 +501,12 @@ func _apply_state(state: Dictionary) -> void:
 			reload_library()
 		return
 	_reload_after_state = false
+	# Đang tải đúng bài này: giữ state lại, KHÔNG khởi động tải lại. Nếu không,
+	# mỗi lần server sync (6s) hoặc echo chính mình sẽ hủy lượt tải đang chạy
+	# và TV treo ở "Đang tải…" mãi mãi.
+	if track_id == _loading_track_id:
+		_pending_state = state.duplicate(true)
+		return
 	var target_playing := bool(state.get("playing", true))
 	var target_position := float(state.get("position", 0.0))
 	var updated_at := float(state.get("updated_at", 0.0))

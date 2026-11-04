@@ -651,10 +651,14 @@ func _update_music_screen(force: bool) -> void:
 	if world == null or world.dj == null:
 		return
 	var dj: QBODJSystem = world.dj
-	title_label.text = dj.current_title
+	var loading := dj.is_loading_track()
+	title_label.text = dj.current_title + ("   ·   đang tải…" if loading else "")
 	artist_label.text = dj.current_artist
-	live_label.text = "●  LIVE FROM THE DJ BOOTH" if dj.playing else "❚❚  DJ BOOTH PAUSED"
-	live_label.add_theme_color_override("font_color", QBOTheme.ACCENT if dj.playing else QBOTheme.MUTED)
+	if loading:
+		live_label.text = "●  ĐANG TẢI NHẠC…"
+	else:
+		live_label.text = "●  LIVE FROM THE DJ BOOTH" if dj.playing else "❚❚  DJ BOOTH PAUSED"
+	live_label.add_theme_color_override("font_color", QBOTheme.GOLD if loading else (QBOTheme.ACCENT if dj.playing else QBOTheme.MUTED))
 	eq_bars.set("active", dj.playing)
 	var duration := dj.current_duration
 	var position := dj.playback_position()
