@@ -346,6 +346,25 @@ func _run_media_test() -> void:
 	])
 	if not bool(cleared.get("ok", false)) or int(cache_after.get("files", 0)) != 0:
 		failures.append("không xoá được cache video")
+	# Auto-trim: tạo tệp giả rồi gọi trim với ngưỡng nhỏ để kiểm tra LRU.
+	for i in 3:
+		_write_cache_file("user://tv_video_cache/test_%d.bin" % i, 400)
+	world.tv._trim_video_cache("", 800)
+	var trimmed: Dictionary = world.tv.video_cache_stats()
+	print("[MEDIA-TEST] trim 3x400B -> %d tệp / %d bytes (ngưỡng 800)" % [int(trimmed.get("files", 0)), int(trimmed.get("bytes", 0))])
+	if int(trimmed.get("bytes", 0)) > 800 or int(trimmed.get("files", 0)) != 2:
+		failures.append("auto-trim không xoá đủ tệp cũ")
+	# keep_path phải sống sót kể cả khi ngưỡng là 0.
+	_write_cache_file("user://tv_video_cache/keep.bin", 100)
+	_write_cache_file("user://tv_video_cache/drop.bin", 100)
+	world.tv._trim_video_cache("user://tv_video_cache/keep.bin", 0)
+	var kept: Dictionary = world.tv.video_cache_stats()
+	print("[MEDIA-TEST] keep_path -> %d tệp / %d bytes" % [int(kept.get("files", 0)), int(kept.get("bytes", 0))])
+	if not FileAccess.file_exists("user://tv_video_cache/keep.bin"):
+		failures.append("auto-trim xoá mất tệp vừa tải (keep_path)")
+	if FileAccess.file_exists("user://tv_video_cache/drop.bin"):
+		failures.append("auto-trim không xoá tệp cũ khi ngưỡng 0")
+	world.tv.clear_video_cache()
 	var elapsed := Time.get_ticks_msec() - started
 	if failures.is_empty():
 		print("[MEDIA-TEST] OK trong %d ms" % elapsed)
@@ -354,6 +373,16 @@ func _run_media_test() -> void:
 		for failure in failures:
 			printerr("[MEDIA-TEST] FAIL: " + str(failure))
 		get_tree().quit(1)
+
+
+func _write_cache_file(path: String, size: int) -> void:
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file == null:
+		return
+	var blob := PackedByteArray()
+	blob.resize(size)
+	file.store_buffer(blob)
+	file.close()
 
 
 func _run_ui_test() -> void:

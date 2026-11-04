@@ -459,11 +459,12 @@ func clear_video_cache() -> Dictionary:
 	return {"ok": true, "removed": removed}
 
 
-## Giữ tổng cache dưới MAX_CACHE_BYTES bằng cách xoá tệp cũ nhất (LRU theo mtime).
-func _trim_video_cache(keep_path: String) -> void:
+## Giữ tổng cache dưới `limit_bytes` bằng cách xoá tệp cũ nhất (LRU theo mtime).
+## `keep_path` luôn được giữ lại (tệp vừa tải xong).
+func _trim_video_cache(keep_path: String, limit_bytes := MAX_CACHE_BYTES) -> void:
 	var stats := video_cache_stats()
 	var total := int(stats.get("bytes", 0))
-	if total <= MAX_CACHE_BYTES:
+	if total <= limit_bytes:
 		return
 	var entries: Array = []
 	var dir := DirAccess.open(VIDEO_CACHE_DIR)
@@ -485,7 +486,7 @@ func _trim_video_cache(keep_path: String) -> void:
 		return int(a["time"]) < int(b["time"])
 	)
 	for item in entries:
-		if total <= MAX_CACHE_BYTES:
+		if total <= limit_bytes:
 			break
 		if str(item["path"]) == keep_path:
 			continue

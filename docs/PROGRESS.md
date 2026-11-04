@@ -106,7 +106,7 @@ Tài liệu: README, ARCHITECTURE, API, MULTIPLAYER, BUILD, MUSIC, ASSET_LICENSE
 | --- | --- |
 | `Godot --headless --path game --editor --quit` | Import project OK, class cache OK, không còn lỗi GDExtension |
 | `Godot --headless --path game --fixed-fps 60 -- --smoke` | **PASS** — interactables=27, players=1, 5 moving heads, demo track 12s/32kHz, TV music screen ready, di chuyển OK, ngồi/đứng OK, URL guard chặn 8 URL nội bộ |
-| `Godot --headless --path game -- --media-test` | **PASS** — API trả 71 bài phát được; audio MP3 tải/giải mã OK (373.5s, playing); TV tải/giải mã MP4 OK (NativeVideoStream 10.00s); cache video xoá sạch qua `clear_video_cache()` |
+| `Godot --headless --path game -- --media-test` | **PASS** — API trả 71 bài phát được; audio MP3 tải/giải mã OK (373.5s, playing); TV tải/giải mã MP4 OK (NativeVideoStream 10.00s); cache video xoá sạch qua `clear_video_cache()`; auto-trim LRU xoá đúng tệp cũ và giữ tệp vừa tải |
 | `Godot --headless --path game -- --ui-test` | **PASS** — overlay máy tính, DJ và TV mở/đóng không lỗi runtime |
 | `Godot --path game -- --screenshot` | **PASS** — `tv_ui.png` 1280×576 (TV lớn) và `tv_dev.png` 1280×720 (TV nhỏ), 6 ảnh QA sân khấu/bar/VIP |
 | `Godot --headless --path game -- --server --port=7001 --allow-unverified-tickets` + `--net-smoke=7001` | **PASS** — players=1, roster=1, connected=true, di chuyển OK, interaction server broadcast OK |
@@ -133,7 +133,7 @@ Godot --path game -- --screenshot
 3. Test 2 máy thật qua Internet với dedicated server + domain/TLS; đồng bộ DJ/TV đã pass trên 2 tiến trình cùng máy nhưng chưa qua mạng thật.
 4. Voice chat WebRTC (signaling qua Next.js route + SFU).
 5. Export Android thử trên thiết bị; tinh chỉnh mobile UI/perf.
-6. Kiểm thử tự dọn cache video với thư viện nhiều video lớn (hiện mới test xoá thủ công).
+6. ~~Kiểm thử tự dọn cache video~~ — đã có test LRU trong `--media-test`; vẫn nên thử với thư viện nhiều video lớn thật.
 7. Đã có [docs/MUSIC.md](MUSIC.md); cập nhật khi API nhạc đổi schema hoặc thêm định dạng.
 
 ## 8. Ghi chú phát triển
