@@ -12,6 +12,8 @@ signal track_changed
 const MUSIC_BUS := "Music"
 const MAX_DOWNLOAD_BYTES := 50 * 1024 * 1024
 const API_TIMEOUT := 20.0
+const LIBRARY_MAX_RETRIES := 2
+const LIBRARY_RETRY_DELAY := 4.0
 const SYNC_INTERVAL := 6.0
 const MAX_DRIFT := 1.25
 
@@ -44,6 +46,7 @@ var _load_seq := 0
 var _pending_state: Dictionary = {}
 var _loading_track_id := ""
 var _library_http: HTTPRequest
+var _library_retries := 0
 var _reload_after_state := false
 
 
@@ -150,6 +153,7 @@ func reload_library() -> void:
 	var parsed: Variant = JSON.parse_string(raw.get_string_from_utf8())
 	_parse_library(parsed)
 	library_loading = false
+	_library_retries = 0
 	library_changed.emit()
 	if _playlist.is_empty():
 		_finish_library_error("Thư viện nhạc trống hoặc không có bài MP3/OGG/WAV.")
@@ -169,6 +173,13 @@ func _finish_library_error(reason: String) -> void:
 	library_changed.emit()
 	if _playlist.is_empty():
 		_use_demo_fallback()
+	# Thử lại vài lần: mạng lag lúc mới vào phòng không nên làm mất cả thư viện.
+	if not AppConfig.is_dedicated and _library_retries < LIBRARY_MAX_RETRIES:
+		_library_retries += 1
+		await get_tree().create_timer(LIBRARY_RETRY_DELAY).timeout
+		if is_inside_tree():
+			reload_library()
+		return
 	if not AppConfig.is_dedicated:
 		App.toast(reason, "error")
 

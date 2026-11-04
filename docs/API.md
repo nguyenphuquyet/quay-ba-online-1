@@ -156,8 +156,15 @@ Idempotent nếu đã là member. Lỗi: `404 ROOM_NOT_FOUND`, `409 ROOM_CLOSED`
 
 ### POST /api/rooms/[code]/leave
 
-Xóa membership. Owner rời → chuyển quyền cho member sớm nhất; hết member → room `CLOSED`.
-Trả `{ "ok": true, "remaining": n }`.
+Xóa membership. **Phòng là tạm thời:** chủ phòng rời → room `CLOSED` và xóa toàn bộ membership (không chuyển quyền); member cuối cùng rời cũng đóng phòng.
+Trả `{ "ok": true, "remaining": n, "closed": bool }` (hoặc `{ "alreadyLeft": true }`).
+
+### POST /api/rooms/[code]/heartbeat
+
+Rate limit 12/phút. Yêu cầu là member. Cập nhật `Room.updatedAt` làm mốc phòng còn sống.
+Client gửi mỗi 30 giây khi đang ở trong phòng. Trả `{ "ok": true }`; `404 ROOM_NOT_FOUND`, `409 ROOM_CLOSED`, `403 NOT_A_MEMBER`.
+
+`GET /api/rooms` tự đóng các phòng `OPEN` quá **120 giây** không có heartbeat hoặc không còn member trước khi trả danh sách.
 
 ## 3. Game tickets
 
@@ -186,6 +193,11 @@ Lỗi: `401 TICKET_INVALID`, `409 TICKET_USED`, `401 TICKET_EXPIRED`, `403 ACCOU
 ### POST /api/game/servers/heartbeat
 
 Header secret. Body `{ name, host, port, region, capacity }`. Upsert registry, trả server id.
+
+### POST /api/game/rooms/[code]/close
+
+**Chỉ game server.** Header `X-Game-Server-Secret`. Dedicated server gọi khi chủ phòng rời hoặc mất kết nối quá 30 giây.
+Đặt room `CLOSED`, xóa membership. Trả `{ "ok": true, "alreadyClosed": bool }`; idempotent nếu phòng đã đóng/không tồn tại.
 
 ## 4. Friends
 

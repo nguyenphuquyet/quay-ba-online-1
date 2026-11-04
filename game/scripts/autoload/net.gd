@@ -14,6 +14,7 @@ signal join_succeeded(room: Dictionary)
 signal join_failed(reason: String)
 signal connection_lost(reason: String)
 signal reconnecting(attempt: int)
+signal reconnect_failed(reason: String)
 signal roster_changed(roster: Array)
 signal player_joined(id: int, info: Dictionary)
 signal player_left(id: int)
@@ -27,6 +28,7 @@ signal dj_received(action: String, payload: Dictionary)
 signal tv_received(state: Dictionary)
 signal room_settings_received(settings: Dictionary)
 signal kicked(reason: String)
+signal room_closed(reason: String)
 signal local_player_ready(spawn: Dictionary)
 
 var mode: int = AppConfig.Mode.SOLO
@@ -62,9 +64,47 @@ var _reconnect_attempts := 0
 var _joined := false
 var _shutting_down := false
 
+## Chờ chủ phòng kết nối lại trước khi đóng phòng (mạng lag / rớt tạm thời).
+const OWNER_GRACE_MS := 30_000
+const MAX_RECONNECT_ATTEMPTS := 5
+const PING_INTERVAL := 3.0
+const PING_TIMEOUT := 12.0
+
+## user_id -> { info, expires } để khôi phục người chơi khi họ kết nối lại.
+var _away: Dictionary = {}
+var _owner_user_id := ""
+var _owner_deadline_ms := 0
+var _closing := false
+var _ping_timer := 0.0
+var _last_pong_ms := 0
+## Đã bị kick / phòng đóng -> không tự reconnect.
+var _room_ended := false
+
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	multiplayer.peer_connected.connect(_on_peer_connected)
+	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
+	multiplayer.connected_to_server.connect(_on_connected_to_server)
+	multiplayer.connection_failed.connect(_on_connection_failed)
+	multiplayer.server_disconnected.connect(_on_server_disconnected)
+
+
+func _process(delta: float) -> void:
+	if mode == AppConfig.Mode.DEDICATED_SERVER:
+		if _owner_deadline_ms > 0 and Time.get_ticks_msec() >= _owner_deadline_ms:
+			_owner_deadline_ms = 0
+			_close_room("Chủ phòng đã rời phòng. Phòng đã đóng.")
+		return
+	if mode != AppConfig.Mode.CLIENT or not _joined or _reconnecting:
+		return
+	_ping_timer -= delta
+	if _ping_timer <= 0.0:
+		_ping_timer = PING_INTERVAL
+		rpc_id(1, "srv_ping", Time.get_ticks_msec())
+	if _last_pong_ms > 0 and Time.get_ticks_msec() - _last_pong_ms > int(PING_TIMEOUT * 1000.0):
+		_last_pong_ms = 0
+		_handle_connection_lost("Mạng không phản hồi — đang kết nối lại.")
 
 
 func is_server() -> bool:
@@ -109,8 +149,6 @@ func start_server(port: int, capacity := 32) -> bool:
 		push_error("Không mở được cổng %d: %s" % [server_port, error_string(err)])
 		return false
 	multiplayer.multiplayer_peer = peer
-	multiplayer.peer_connected.connect(_on_peer_connected)
-	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	mode = AppConfig.Mode.DEDICATED_SERVER
 	owner_id = -1
 	_joined = true
@@ -127,17 +165,19 @@ func connect_to_room(host: String, port: int, ticket: String) -> bool:
 	_endpoint_host = host
 	_endpoint_port = port
 	_ticket = ticket
-	_reconnect_attempts = 0
+	if not _reconnecting:
+		_reconnect_attempts = 0
+		if not GameState.room.is_empty():
+			room = GameState.room.duplicate(true)
+	_room_ended = false
 	_joined = false
+	_last_pong_ms = 0
 	peer = ENetMultiplayerPeer.new()
 	var err := peer.create_client(host, port)
 	if err != OK:
 		join_failed.emit("Không tạo được kết nối tới %s:%d (%s)." % [host, port, error_string(err)])
 		return false
 	multiplayer.multiplayer_peer = peer
-	multiplayer.connected_to_server.connect(_on_connected_to_server)
-	multiplayer.connection_failed.connect(_on_connection_failed)
-	multiplayer.server_disconnected.connect(_on_server_disconnected)
 	return true
 
 
@@ -155,40 +195,54 @@ func _on_connection_failed() -> void:
 
 
 func _on_server_disconnected() -> void:
-	if _shutting_down:
+	_handle_connection_lost("Mất kết nối tới game server.")
+
+
+func _handle_connection_lost(reason: String) -> void:
+	if _shutting_down or _room_ended or mode != AppConfig.Mode.CLIENT or _reconnecting:
 		return
-	if mode != AppConfig.Mode.CLIENT:
-		return
-	connection_lost.emit("Mất kết nối tới game server.")
+	_joined = false
+	_last_pong_ms = 0
+	connection_lost.emit(reason)
 	_attempt_reconnect()
 
 
 func _attempt_reconnect() -> void:
-	if _reconnecting or mode != AppConfig.Mode.CLIENT:
+	if _reconnecting or mode != AppConfig.Mode.CLIENT or _endpoint_host == "":
 		return
 	_reconnecting = true
-	while _reconnect_attempts < 3 and _endpoint_host != "":
-		_reconnect_attempts += 1
-		reconnecting.emit(_reconnect_attempts)
-		await get_tree().create_timer(2.0).timeout
+	var ticket := _ticket
+	var code := str(room.get("code", ""))
+	if code == "":
+		code = str(GameState.room.get("code", ""))
+	var last_error := ""
+	for attempt in range(1, MAX_RECONNECT_ATTEMPTS + 1):
+		_reconnect_attempts = attempt
+		reconnecting.emit(attempt)
+		await get_tree().create_timer(2.0 + float(attempt - 1) * 1.5).timeout
 		if mode != AppConfig.Mode.CLIENT:
 			break
-		var ticket := _ticket
-		var code := str(room.get("code", ""))
 		if code != "":
 			var res := await Api.request_game_ticket(code)
 			if res["ok"] and res["data"] is Dictionary and res["data"].has("ticket"):
 				ticket = str(res["data"]["ticket"])
+			else:
+				last_error = str(res.get("error", ""))
 		if ticket == "":
 			continue
 		connect_to_room(_endpoint_host, _endpoint_port, ticket)
-		var ok := await _wait_for_welcome(8.0)
-		if ok:
+		if await _wait_for_welcome(8.0):
 			_reconnecting = false
+			_reconnect_attempts = 0
+			_last_pong_ms = Time.get_ticks_msec()
 			system_message.emit("Đã kết nối lại phòng.")
 			return
 	_reconnecting = false
-	connection_lost.emit("Không thể kết nối lại. Vui lòng vào lại phòng.")
+	_reconnect_attempts = 0
+	if last_error != "":
+		reconnect_failed.emit("Không thể kết nối lại (%s). Vui lòng vào lại phòng." % last_error)
+	else:
+		reconnect_failed.emit("Không thể kết nối lại. Vui lòng vào lại phòng.")
 
 
 func _wait_for_welcome(timeout: float) -> bool:
@@ -204,7 +258,7 @@ func _wait_for_welcome(timeout: float) -> bool:
 
 @rpc("any_peer", "call_remote", "reliable")
 func srv_join(ticket: String, display_name: String, avatar := "") -> void:
-	if not is_server():
+	if not is_server() or _closing:
 		return
 	var sender := multiplayer.get_remote_sender_id()
 	if players.has(sender):
@@ -216,24 +270,70 @@ func srv_join(ticket: String, display_name: String, avatar := "") -> void:
 	if not verified["ok"]:
 		rpc_id(sender, "cli_kicked", verified.get("error", "Vé vào game không hợp lệ."))
 		return
+	var ticket_room: Dictionary = verified.get("room", {}) if verified.get("room") is Dictionary else {}
+	var code := str(ticket_room.get("code", ""))
+	# Một tiến trình server chỉ phục vụ một phòng tại một thời điểm.
+	if not room.is_empty() and code != "" and str(room.get("code", "")) != "" and code != str(room.get("code", "")):
+		rpc_id(sender, "cli_kicked", "Server đang phục vụ phòng khác. Vui lòng thử lại sau.")
+		return
+	if room.is_empty() and not ticket_room.is_empty():
+		room = ticket_room
+	var user_id := str(verified.get("user_id", ""))
 	var info := _make_player_info(sender, display_name, avatar)
-	info["user_id"] = verified.get("user_id", "")
-	info["is_owner"] = verified.get("is_owner", false)
-	if owner_id == -1 or info["is_owner"]:
+	info["user_id"] = user_id
+	# Khôi phục vị trí/trạng thái nếu người chơi quay lại trong thời gian chờ.
+	var restored: Dictionary = _away.get(user_id, {})
+	var resumed := false
+	if user_id != "" and not restored.is_empty() and int(restored.get("expires", 0)) > Time.get_ticks_msec():
+		var old_info: Dictionary = restored.get("info", {})
+		for key in ["position", "yaw", "animation", "flags", "style"]:
+			if old_info.has(key):
+				info[key] = old_info[key]
+		resumed = true
+	_away.erase(user_id)
+	info["is_owner"] = bool(verified.get("is_owner", false))
+	if info["is_owner"]:
 		owner_id = sender
+		_owner_user_id = user_id
+		_owner_deadline_ms = 0
+	elif owner_id == -1 and _owner_user_id == "":
+		# Fallback cho server test không xác minh ticket.
+		owner_id = sender
+		_owner_user_id = user_id
 		info["is_owner"] = true
-	if verified.has("room") and verified["room"] is Dictionary:
-		room = verified["room"]
 	players[sender] = info
-	_last_states[sender] = Vector3.ZERO
+	_last_states[sender] = info.get("position", Vector3.ZERO)
 	_last_state_at[sender] = Time.get_ticks_msec()
 	_rebuild_roster()
 	rpc_id(sender, "cli_welcome", players, room_settings, owner_id, lighting_state, dj_state, tv_state, info)
 	for id in players.keys():
 		if int(id) != sender:
 			rpc_id(int(id), "cli_player_joined", sender, info)
+	if resumed:
+		_broadcast_all("cli_system_message", ["%s đã kết nối lại." % str(info.get("name", "Người chơi"))])
 	print("[QBO] %s (#%d) vào phòng %s" % [display_name, sender, room.get("code", "?")])
 	_broadcast_except(sender, "cli_roster", [roster])
+
+
+@rpc("any_peer", "call_remote", "unreliable_ordered")
+func srv_ping(stamp: int) -> void:
+	if not is_server():
+		return
+	rpc_id(multiplayer.get_remote_sender_id(), "cli_pong", stamp)
+
+
+@rpc("authority", "call_remote", "unreliable_ordered")
+func cli_pong(_stamp: int) -> void:
+	_last_pong_ms = Time.get_ticks_msec()
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func srv_owner_leaving() -> void:
+	if not is_server():
+		return
+	if multiplayer.get_remote_sender_id() != owner_id:
+		return
+	_close_room("Chủ phòng đã đóng phòng.")
 
 
 func _verify_ticket(ticket: String) -> Dictionary:
@@ -265,6 +365,8 @@ func cli_welcome(roster_in: Dictionary, settings_in: Dictionary, owner: int, lig
 	tv_state = tv.duplicate(true)
 	_joined = true
 	_rebuild_roster()
+	_last_pong_ms = Time.get_ticks_msec()
+	_ping_timer = 0.0
 	join_succeeded.emit(room)
 	local_player_ready.emit(me)
 	if not lighting_state.is_empty():
@@ -278,7 +380,15 @@ func cli_welcome(roster_in: Dictionary, settings_in: Dictionary, owner: int, lig
 
 @rpc("authority", "call_remote", "reliable")
 func cli_kicked(reason: String) -> void:
+	_room_ended = true
 	kicked.emit(reason)
+	_teardown_peer()
+
+
+@rpc("authority", "call_remote", "reliable")
+func cli_room_closed(reason: String) -> void:
+	_room_ended = true
+	room_closed.emit(reason)
 	_teardown_peer()
 
 
@@ -661,28 +771,81 @@ func kick_peer(peer_id: int) -> void:
 		peer.disconnect_peer(peer_id)
 
 
+## Client báo server biết chủ phòng chủ động rời (đóng phòng ngay, không chờ grace).
+func notify_owner_leaving() -> void:
+	if mode == AppConfig.Mode.CLIENT and is_owner() and multiplayer.has_multiplayer_peer():
+		rpc_id(1, "srv_owner_leaving")
+
+
 # ------------------------------------------------------------------ peer lifecycle
 
 func _on_peer_connected(id: int) -> void:
+	if not is_server():
+		return
 	print("[QBO] Peer %d đã kết nối, chờ xác minh ticket." % id)
 
 
 func _on_peer_disconnected(id: int) -> void:
-	if players.has(id):
-		var info: Dictionary = players[id]
-		players.erase(id)
-		_last_states.erase(id)
-		_last_state_at.erase(id)
-		_chat_buckets.erase(id)
-		if id == owner_id:
-			owner_id = -1
-			for other in players.keys():
-				owner_id = int(other)
-				players[other]["is_owner"] = true
-				break
-		_rebuild_roster()
-		_broadcast_all("cli_player_left", [id])
-		print("[QBO] %s rời phòng." % str(info.get("name", "?")))
+	if not is_server() or not players.has(id):
+		return
+	var info: Dictionary = players[id]
+	var user_id := str(info.get("user_id", ""))
+	players.erase(id)
+	_last_states.erase(id)
+	_last_state_at.erase(id)
+	_chat_buckets.erase(id)
+	# Giữ trạng thái để khôi phục nếu người chơi kết nối lại trong thời gian chờ.
+	if user_id != "":
+		_away[user_id] = {
+			"info": info.duplicate(true),
+			"expires": Time.get_ticks_msec() + OWNER_GRACE_MS,
+		}
+	var was_owner := id == owner_id
+	if was_owner:
+		owner_id = -1
+		_owner_deadline_ms = Time.get_ticks_msec() + OWNER_GRACE_MS
+		_broadcast_all("cli_system_message", ["Chủ phòng mất kết nối — đang chờ kết nối lại..."])
+	_rebuild_roster()
+	_broadcast_all("cli_player_left", [id])
+	print("[QBO] %s rời phòng." % str(info.get("name", "?")))
+	if players.is_empty() and not was_owner:
+		_close_room("Phòng không còn người chơi.")
+
+
+## Đóng phòng: báo client, báo backend, ngắt kết nối và reset để nhận phòng mới.
+func _close_room(reason: String) -> void:
+	if _closing:
+		return
+	_closing = true
+	_owner_deadline_ms = 0
+	var code := str(room.get("code", ""))
+	if code != "" and AppConfig.game_secret != "":
+		Api.close_game_room(code)
+	_broadcast_all("cli_room_closed", [reason])
+	await get_tree().create_timer(0.5).timeout
+	if peer != null:
+		for id in multiplayer.get_peers():
+			peer.disconnect_peer(int(id))
+	_reset_room_state()
+
+
+func _reset_room_state() -> void:
+	players.clear()
+	roster.clear()
+	_last_states.clear()
+	_last_state_at.clear()
+	_chat_buckets.clear()
+	_away.clear()
+	room.clear()
+	owner_id = -1
+	_owner_user_id = ""
+	_owner_deadline_ms = 0
+	lighting_state.clear()
+	dj_state.clear()
+	tv_state.clear()
+	_closing = false
+	roster_changed.emit(roster)
+	print("[QBO] Phòng đã đóng, server sẵn sàng nhận phòng mới.")
 
 
 func _make_player_info(id: int, display_name: String, avatar: String) -> Dictionary:
@@ -737,6 +900,8 @@ func _rpc_peer(id: int, method: String, args: Array) -> void:
 			rpc_id(id, "cli_player_left", args[0])
 		"cli_kicked":
 			rpc_id(id, "cli_kicked", args[0])
+		"cli_room_closed":
+			rpc_id(id, "cli_room_closed", args[0])
 		"cli_room_settings":
 			rpc_id(id, "cli_room_settings", args[0])
 		"cli_player_state":
@@ -782,3 +947,18 @@ func stop() -> void:
 	lighting_state.clear()
 	dj_state.clear()
 	tv_state.clear()
+	_last_states.clear()
+	_last_state_at.clear()
+	_chat_buckets.clear()
+	_away.clear()
+	_owner_user_id = ""
+	_owner_deadline_ms = 0
+	_closing = false
+	_reconnecting = false
+	_reconnect_attempts = 0
+	_room_ended = false
+	_ping_timer = 0.0
+	_last_pong_ms = 0
+	_endpoint_host = ""
+	_endpoint_port = 0
+	_ticket = ""

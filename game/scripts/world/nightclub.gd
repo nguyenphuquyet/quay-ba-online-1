@@ -995,6 +995,12 @@ func _connect_net() -> void:
 
 
 func _on_local_player_ready(info: Dictionary) -> void:
+	var id := int(info.get("id", Net.local_peer_id))
+	# Khi kết nối lại, peer id đổi -> bỏ node local cũ trước khi tạo lại.
+	for existing_id in players.keys():
+		var node = players[existing_id]
+		if node != null and is_instance_valid(node) and node.get("is_local_player") == true and int(existing_id) != id:
+			remove_player(int(existing_id))
 	add_player(info, true)
 	# Người vào phòng sau nhận danh sách người chơi có sẵn trong `cli_welcome`
 	# chứ không nhận `cli_player_joined` cho từng người -> phải spawn hết ở đây,

@@ -9,6 +9,11 @@ var ui: CanvasLayer
 var world: Nightclub
 var booted := false
 
+## Phòng tạm thời: client gửi nhịp để backend biết phòng còn sống.
+const ROOM_HEARTBEAT_INTERVAL := 30.0
+var _heartbeat_timer := 0.0
+var _leaving := false
+
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -41,6 +46,19 @@ func _ready() -> void:
 			_run_net_smoke(arg.split("=")[1])
 			return
 	_boot_client()
+
+
+func _process(delta: float) -> void:
+	if AppConfig.is_dedicated or not booted or not GameState.is_logged_in():
+		return
+	var code := str(GameState.room.get("code", "SOLO"))
+	if code == "" or code == "SOLO":
+		_heartbeat_timer = 0.0
+		return
+	_heartbeat_timer -= delta
+	if _heartbeat_timer <= 0.0:
+		_heartbeat_timer = ROOM_HEARTBEAT_INTERVAL
+		Api.room_heartbeat(code)
 
 
 func _boot_client() -> void:
@@ -117,12 +135,23 @@ func start_room(room: Dictionary, ticket: String, host: String, port: int) -> vo
 
 
 func leave_room() -> void:
-	if GameState.room.has("code") and GameState.is_logged_in() and str(GameState.room.get("code", "SOLO")) != "SOLO":
-		Api.leave_room(str(GameState.room["code"]))
+	if _leaving:
+		return
+	_leaving = true
+	_heartbeat_timer = 0.0
+	var code := str(GameState.room.get("code", "SOLO"))
+	var online := code != "" and code != "SOLO" and GameState.is_logged_in()
+	# Chủ phòng rời đi -> phòng đóng ngay, không chuyển quyền cho người khác.
+	if online and Net.mode == AppConfig.Mode.CLIENT and Net.is_owner():
+		Net.notify_owner_leaving()
+		await get_tree().create_timer(0.25).timeout
+	if online:
+		Api.leave_room(code)
 	Net.stop()
 	GameState.clear_room()
 	GameState.ticket = ""
 	unload_world()
+	_leaving = false
 	if ui != null:
 		ui.call("exit_game")
 
@@ -389,7 +418,9 @@ func _run_ui_test() -> void:
 	print("[UI-TEST] mở overlay DJ + máy tính")
 	var failures: Array = []
 	_boot_client()
-	await get_tree().create_timer(1.0).timeout
+	# Chờ splash (1.4s) chuyển xong sang login/main_menu rồi mới vào game,
+	# tránh việc show_screen đóng overlay vừa mở.
+	await get_tree().create_timer(2.2).timeout
 	start_solo()
 	await get_tree().create_timer(1.0).timeout
 	if ui == null:
@@ -775,5 +806,49 @@ func _run_net_smoke(target: String) -> void:
 		if player != null and not player.seated:
 			ok = false
 			printerr("[NET-SMOKE] FAIL: server không broadcast tương tác")
+	if ok and "--dj-test" in AppConfig.launch_args:
+		# Kiểm tra tải thư viện + phát nhạc trong phòng online.
+		var dj = world.dj
+		var waited := 0.0
+		while dj.library_loading and waited < 25.0:
+			await get_tree().create_timer(0.25).timeout
+			waited += 0.25
+		print("[NET-SMOKE] dj library=%d loading=%s error=%s" % [dj.track_count(), str(dj.library_loading), dj.library_error])
+		if dj.track_count() == 0:
+			ok = false
+			printerr("[NET-SMOKE] FAIL: thư viện nhạc rỗng")
+		else:
+			var tracks: Array = dj.playlist()
+			dj.play_track(str(tracks[0].get("id", "")))
+			var wait := 0.0
+			while dj.is_loading_track() and wait < 40.0:
+				await get_tree().create_timer(0.25).timeout
+				wait += 0.25
+			print("[NET-SMOKE] dj playing=%s track=%s loading=%s" % [str(dj.playing), dj.current_track_id, str(dj.is_loading_track())])
+			if not dj.playing:
+				ok = false
+				printerr("[NET-SMOKE] FAIL: không phát được nhạc")
+			await get_tree().create_timer(1.5).timeout
+			print("[NET-SMOKE] dj_state_track=%s" % str(Net.dj_state.get("track_id", "")))
+	if ok and "--owner-leave" in AppConfig.launch_args:
+		# Kiểm tra chủ phòng chủ động rời -> server đóng phòng ngay.
+		var closed := [false]
+		Net.room_closed.connect(func(_reason: String): closed[0] = true)
+		print("[NET-SMOKE] chủ phòng rời phòng...")
+		Net.notify_owner_leaving()
+		await get_tree().create_timer(2.0).timeout
+		print("[NET-SMOKE] room_closed=%s" % str(closed[0]))
+		if not closed[0]:
+			ok = false
+			printerr("[NET-SMOKE] FAIL: không nhận cli_room_closed")
+	if ok and "--reconnect-test" in AppConfig.launch_args:
+		# Giả lập mạng lag: đóng peer rồi để Net tự kết nối lại.
+		print("[NET-SMOKE] giả lập mất kết nối...")
+		Net._handle_connection_lost("test")
+		await get_tree().create_timer(20.0).timeout
+		print("[NET-SMOKE] reconnected online=%s joined=%s" % [str(Net.is_online()), str(Net._joined)])
+		if not Net.is_online() or not Net._joined:
+			ok = false
+			printerr("[NET-SMOKE] FAIL: không kết nối lại được")
 	print("[NET-SMOKE] %s" % ("OK" if ok else "FAIL"))
 	get_tree().quit(0 if ok else 1)

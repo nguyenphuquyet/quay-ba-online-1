@@ -18,6 +18,24 @@ export async function GET(request: NextRequest) {
 			limit: params.get("limit") ?? undefined,
 		});
 		const where: Record<string, unknown> = { status: "OPEN" };
+		const prisma = getPrisma();
+		// Phòng là tạm thời: dọn phòng không còn ai hoạt động trước khi trả danh sách.
+		// Client gửi heartbeat mỗi 30 giây; quá 2 phút không có heartbeat thì coi như chết.
+		const staleBefore = new Date(Date.now() - 120_000);
+		await prisma.room.updateMany({
+			where: { status: "OPEN", updatedAt: { lt: staleBefore } },
+			data: { status: "CLOSED" },
+		});
+		const emptyRooms = await prisma.room.findMany({
+			where: { status: "OPEN", members: { none: {} } },
+			select: { id: true },
+		});
+		if (emptyRooms.length > 0) {
+			await prisma.room.updateMany({
+				where: { id: { in: emptyRooms.map((room) => room.id) } },
+				data: { status: "CLOSED" },
+			});
+		}
 		if (query.visibility === "public") where.isPublic = true;
 		if (query.visibility === "private") where.isPublic = false;
 		if (query.search !== "") {

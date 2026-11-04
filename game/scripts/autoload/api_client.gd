@@ -176,6 +176,10 @@ func room_detail(code: String) -> Dictionary:
 	return await request("GET", "/api/rooms/%s" % code)
 
 
+func room_heartbeat(code: String) -> Dictionary:
+	return await request("POST", "/api/rooms/%s/heartbeat" % code, {})
+
+
 func request_game_ticket(room_code: String) -> Dictionary:
 	return await request("POST", "/api/game/ticket", {"roomCode": room_code})
 
@@ -236,3 +240,27 @@ func verify_game_ticket(game_ticket: String) -> Dictionary:
 	var text := (response[3] as PackedByteArray).get_string_from_utf8()
 	var data: Variant = JSON.parse_string(text) if text != "" else null
 	return {"ok": code >= 200 and code < 300, "status": code, "data": data, "error": "" if code < 300 else "invalid ticket"}
+
+
+## Dedicated server báo backend đóng phòng (chủ phòng rời hoặc mất kết nối quá lâu).
+func close_game_room(room_code: String) -> Dictionary:
+	if AppConfig.game_secret == "":
+		return {"ok": false, "status": 0, "data": null, "error": "missing game secret"}
+	var http := HTTPRequest.new()
+	http.timeout = 10.0
+	add_child(http)
+	var headers := PackedStringArray([
+		"Content-Type: application/json",
+		"Accept: application/json",
+		"X-Game-Server-Secret: " + AppConfig.game_secret,
+	])
+	var err := http.request(AppConfig.api_url + "/api/game/rooms/%s/close" % room_code, headers, HTTPClient.METHOD_POST, "{}")
+	if err != OK:
+		http.queue_free()
+		return {"ok": false, "status": 0, "data": null, "error": "backend unreachable"}
+	var response: Array = await http.request_completed
+	http.queue_free()
+	var code: int = response[1]
+	var text := (response[3] as PackedByteArray).get_string_from_utf8()
+	var data: Variant = JSON.parse_string(text) if text != "" else null
+	return {"ok": code >= 200 and code < 300, "status": code, "data": data, "error": "" if code < 300 else "close failed"}

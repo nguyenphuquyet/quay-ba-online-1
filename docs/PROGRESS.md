@@ -19,14 +19,14 @@ Phiên bản: 0.1.0 (nền tảng MVP)
 - [x] Dedicated server Godot headless (`--server`).
 - [x] ENet join bằng game ticket, server authority vị trí, correction, chat, interaction, roster.
 - [x] Đồng bộ animation, seating, DJ state, lighting, TV state.
-- [x] Reconnect 3 lần với ticket mới.
+- [x] Reconnect 5 lần với backoff + ticket mới, watchdog ping 3s/pong 12s; khôi phục vị trí/trạng thái theo `user_id`.
 - [x] **Kiểm chứng 2 tiến trình**: server + client smoke test pass; server + 2 client pass, client vào sau nhận đúng TV state (URL MP4) qua broadcast (xem mục 5).
 
 ### Phase 3 — Backend
 - [x] Next.js App Router 16, TypeScript strict, Prisma 6.19, MySQL schema.
 - [x] Auth: register/login/logout/refresh rotation + reuse detection, JWT jose, bcrypt 12, cookie httpOnly.
 - [x] Users/me, public profile, PATCH profile.
-- [x] Rooms: list/search/filter, create, detail, join (mật khẩu/sức chứa), leave (chuyển owner), update, delete.
+- [x] Rooms: list/search/filter, create, detail, join (mật khẩu/sức chứa), leave (chủ rời → đóng phòng), update, delete; phòng tạm thời + heartbeat 30s, dọn phòng quá 120s.
 - [x] Game ticket 5 phút, single-use, verify bằng `X-Game-Server-Secret`; registry server + heartbeat.
 - [x] Friends, inventory, reports, moderation cơ bản.
 - [x] Zod validation, rate limiting (Redis tùy chọn + in-memory), JSON logging, error envelope.
@@ -56,7 +56,7 @@ Phiên bản: 0.1.0 (nền tảng MVP)
 - [ ] Chat lịch sử/persistence: chưa (chat hiện realtime qua ENet).
 - [ ] Docker compose: file có, chưa chạy do máy không có Docker.
 - [x] MySQL migration thật: migration `20261103120000_init` đã chạy trên **Aiven MySQL 8**; backend deploy Vercel tại https://quay-bar-online-server.vercel.app (`/api/health` → `database: up`, register/login đã test).
-- [ ] Dedicated game server public: chưa deploy lên VPS; client vẫn mặc định `127.0.0.1:7000`.
+- [x] Dedicated game server public: đã deploy lên VPS `18.138.228.21` (UDP 3221, heartbeat `serverbar1.nguyenphuquyet.online:3221`). Backend vẫn ở Vercel; các thay đổi phòng tạm thời/reconnect cần deploy backend mới có hiệu lực đầy đủ.
 
 ## 3. File đã tạo/chỉnh sửa chính
 
@@ -111,6 +111,9 @@ Tài liệu: README, ARCHITECTURE, API, MULTIPLAYER, BUILD, MUSIC, ASSET_LICENSE
 | `Godot --path game -- --screenshot` | **PASS** — `tv_ui.png` 1280×576 (TV lớn) và `tv_dev.png` 1280×720 (TV nhỏ), 6 ảnh QA sân khấu/bar/VIP |
 | `Godot --headless --path game -- --server --port=7001 --allow-unverified-tickets` + `--net-smoke=7001` | **PASS** — players=1, roster=1, connected=true, di chuyển OK, interaction server broadcast OK |
 | Server + 2 client: `--net-smoke=7013 --tv-url=…` (owner) và `--net-smoke=7013 --watch-tv=…` | **PASS** — client 2 vào sau nhận đúng URL MP4 qua broadcast (`tv_received`), players=2, scene=2 |
+| `--net-smoke=7019 --reconnect-test` | **PASS** — giả lập mất kết nối, tự nối lại (`online=true joined=true`), server thấy peer mới join lại |
+| `--net-smoke=7017 --owner-leave` | **PASS** — chủ phòng rời → client nhận `cli_room_closed`, server log “Phòng đã đóng, server sẵn sàng nhận phòng mới” |
+| Owner rớt mạng (kill client) + chờ grace | **PASS** — sau 30s server tự đóng phòng và reset |
 | `prisma validate` | **PASS** |
 | `prisma generate` | **PASS** (Prisma 6.19.3) |
 | `tsc --noEmit` | **PASS** |

@@ -61,6 +61,9 @@ func boot() -> void:
 	Net.join_failed.connect(_on_join_failed)
 	Net.kicked.connect(_on_kicked)
 	Net.connection_lost.connect(_on_connection_lost)
+	Net.reconnecting.connect(_on_reconnecting)
+	Net.reconnect_failed.connect(_on_reconnect_failed)
+	Net.room_closed.connect(_on_room_closed)
 
 	get_viewport().size_changed.connect(_apply_safe_area)
 	_apply_safe_area()
@@ -323,3 +326,17 @@ func _on_kicked(reason: String) -> void:
 
 func _on_connection_lost(reason: String) -> void:
 	toast(reason, "error")
+
+
+func _on_reconnecting(attempt: int) -> void:
+	toast("Đang kết nối lại phòng (lần %d/%d)..." % [attempt, Net.MAX_RECONNECT_ATTEMPTS], "info")
+
+
+func _on_reconnect_failed(reason: String) -> void:
+	toast(reason, "error")
+	App.leave_room()
+
+
+func _on_room_closed(reason: String) -> void:
+	toast(reason, "error")
+	App.leave_room()

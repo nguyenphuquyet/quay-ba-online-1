@@ -67,7 +67,7 @@ async function selectGameServer(): Promise<{ host: string; port: number; serverI
 	};
 }
 
-function assertGameServerSecret(provided: string | null): void {
+export function assertGameServerSecret(provided: string | null): void {
 	const expected = process.env.GAME_SERVER_SECRET;
 	if (!expected) {
 		throw new ApiError(503, "GAME_SECRET_MISSING", "Backend chưa cấu hình GAME_SERVER_SECRET.");
@@ -131,4 +131,21 @@ export async function verifyGameTicket(ticket: string, secret: string | null) {
 			lightingPreset: record.room.lightingPreset,
 		},
 	};
+}
+
+/** Đóng phòng từ dedicated server (khi chủ phòng mất kết nối quá thời gian chờ). */
+export async function closeGameRoom(code: string, secret: string | null) {
+	assertGameServerSecret(secret);
+	const prisma = getPrisma();
+	const room = await prisma.room.findUnique({ where: { code }, select: { id: true, status: true } });
+	if (!room) {
+		return { ok: true, alreadyClosed: true };
+	}
+	if (room.status !== "CLOSED") {
+		await prisma.$transaction([
+			prisma.room.update({ where: { id: room.id }, data: { status: "CLOSED" } }),
+			prisma.roomMember.deleteMany({ where: { roomId: room.id } }),
+		]);
+	}
+	return { ok: true, alreadyClosed: room.status === "CLOSED" };
 }

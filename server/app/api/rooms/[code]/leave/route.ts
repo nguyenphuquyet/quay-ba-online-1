@@ -24,24 +24,20 @@ export async function POST(request: NextRequest, context: { params: Promise<{ co
 			return jsonOk({ ok: true, alreadyLeft: true });
 		}
 
-		await prisma.roomMember.delete({ where: { id: membership.id } });
-
+		// Phòng là tạm thời: chủ phòng rời đi thì đóng phòng, không chuyển quyền.
 		if (room.ownerId === user.id) {
-			const nextOwner = await prisma.roomMember.findFirst({
-				where: { roomId: room.id },
-				orderBy: { joinedAt: "asc" },
-			});
-			if (nextOwner) {
-				await prisma.$transaction([
-					prisma.roomMember.update({ where: { id: nextOwner.id }, data: { role: "OWNER" } }),
-					prisma.room.update({ where: { id: room.id }, data: { ownerId: nextOwner.userId } }),
-				]);
-			} else {
-				await prisma.room.update({ where: { id: room.id }, data: { status: "CLOSED" } });
-			}
+			await prisma.$transaction([
+				prisma.room.update({ where: { id: room.id }, data: { status: "CLOSED" } }),
+				prisma.roomMember.deleteMany({ where: { roomId: room.id } }),
+			]);
+			return jsonOk({ ok: true, remaining: 0, closed: true });
 		}
 
+		await prisma.roomMember.delete({ where: { id: membership.id } });
 		const remaining = await prisma.roomMember.count({ where: { roomId: room.id } });
-		return jsonOk({ ok: true, remaining });
+		if (remaining === 0) {
+			await prisma.room.update({ where: { id: room.id }, data: { status: "CLOSED" } });
+		}
+		return jsonOk({ ok: true, remaining, closed: remaining === 0 });
 	});
 }
