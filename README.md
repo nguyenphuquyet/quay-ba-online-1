@@ -11,7 +11,7 @@ Game nightclub xã hội 3D multiplayer, đa nền tảng (Windows / Android / i
 | Game client | Godot 4.7, GDScript, Forward+ / GL Compatibility | [`game/`](game) |
 | Dedicated game server | Cùng code Godot, chạy headless `--server` | [`game/`](game) + [`multiplayer/`](multiplayer) |
 | Backend web/API | Next.js 16 App Router, TypeScript, Prisma, MySQL 8, Redis (tùy chọn) | [`server/`](server) |
-| Tài liệu | Kiến trúc, API, multiplayer, build, browser, license | [`docs/`](docs) |
+| Tài liệu | Kiến trúc, API, multiplayer, build, nhạc/TV, license | [`docs/`](docs) |
 
 Backend production đang chạy tại **https://quay-bar-online-server.vercel.app** (health: `/api/health`). Hướng dẫn deploy/DB: [docs/DEPLOY_VERCEL.md](docs/DEPLOY_VERCEL.md).
 
@@ -111,7 +111,7 @@ game/          Godot client + dedicated server mode
 server/        Next.js App Router API + Prisma/MySQL
 multiplayer/   Dockerfile & công cụ chạy dedicated server
 tools/         Script kiểm tra/asset import nội bộ
-docs/          ARCHITECTURE, API, MULTIPLAYER, BUILD, ASSET_LICENSES
+docs/          ARCHITECTURE, API, MULTIPLAYER, BUILD, MUSIC, ASSET_LICENSES
 ```
 
 ## Kiểm thử đã chạy
@@ -146,6 +146,7 @@ Kết quả và giới hạn: xem [PROGRESS.md](PROGRESS.md).
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [docs/API.md](docs/API.md)
 - [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md)
+- [docs/MUSIC.md](docs/MUSIC.md)
 - [docs/BUILD.md](docs/BUILD.md)
 - [docs/ASSET_LICENSES.md](docs/ASSET_LICENSES.md)
 

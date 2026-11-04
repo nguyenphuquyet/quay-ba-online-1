@@ -85,7 +85,7 @@ server/app/api/{inventory,reports,game,moderation}/...
 server/Dockerfile, docker-compose.yml, multiplayer/Dockerfile + heartbeat
 ```
 
-Tài liệu: README, ARCHITECTURE, API, MULTIPLAYER, BUILD, ASSET_LICENSES, PROGRESS.
+Tài liệu: README, ARCHITECTURE, API, MULTIPLAYER, BUILD, MUSIC, ASSET_LICENSES, PROGRESS.
 
 ## 4. Lỗi còn tồn tại / rủi ro
 
@@ -134,7 +134,7 @@ Godot --path game -- --screenshot
 4. Voice chat WebRTC (signaling qua Next.js route + SFU).
 5. Export Android thử trên thiết bị; tinh chỉnh mobile UI/perf.
 6. Kiểm thử tự dọn cache video với thư viện nhiều video lớn (hiện mới test xoá thủ công).
-7. Tài liệu hoá API nhạc và luồng thêm bài hát mới.
+7. Đã có [docs/MUSIC.md](MUSIC.md); cập nhật khi API nhạc đổi schema hoặc thêm định dạng.
 
 ## 8. Ghi chú phát triển
 
