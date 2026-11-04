@@ -2,7 +2,7 @@
 
 Game nightclub xã hội 3D multiplayer, đa nền tảng (Windows / Android / iOS). Người chơi tạo phòng, gặp bạn bè trong câu lạc bộ **The Chrome Lotus**, khiêu vũ, chat, lên booth DJ, điều khiển ánh sáng, dùng máy tính trong bar và chia sẻ nội dung lên màn hình LED sân khấu.
 
-> Trạng thái: **nền tảng MVP đang chạy được** — client Godot 4.7, dedicated server ENet authoritative, backend Next.js + Prisma/MySQL. Build iOS **không ký** được tạo tự động bằng GitHub Actions (macOS runner); phần browser nhúng native và voice chat WebRTC chưa được kiểm chứng trên thiết bị thật. Xem [PROGRESS.md](PROGRESS.md) để biết chính xác đã làm và chưa làm.
+> Trạng thái: **nền tảng MVP đang chạy được** — client Godot 4.7, dedicated server ENet authoritative, backend Next.js + Prisma/MySQL. Build iOS **không ký** được tạo tự động bằng GitHub Actions (macOS runner); video MP4 trên mobile và voice chat WebRTC chưa được kiểm chứng trên thiết bị thật. Xem [docs/PROGRESS.md](docs/PROGRESS.md) để biết chính xác đã làm và chưa làm.
 
 ## Thành phần
 
