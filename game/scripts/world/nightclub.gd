@@ -5,7 +5,7 @@ extends Node3D
 ## nhờ vậy interact_id và vị trí luôn khớp giữa các máy).
 
 const SPAWN_POSITION := Vector3(0.0, 1.2, 22.0)
-const MAIN_CEIL := 10.0
+const MAIN_CEIL := 13.5
 const LOBBY_CEIL := 6.2
 const BACK_CEIL := 4.2
 const BALCONY_Y := 5.0
@@ -274,141 +274,174 @@ func _add_spot(node_name: String, position: Vector3, color: Color, energy: float
 	return light
 
 
-## Đèn "magic ball": quả cầu pha lê nhiều màu bắn ra chùm tia mảnh xuống sàn.
-## Mỗi tia là mesh nón additive và có một đốm sáng đúng điểm chạm sàn;
-## LightingController xoay cụm, đổi màu và nhấp theo beat.
-func _add_magic_ball(node_name: String, position: Vector3, palette: Array, base_yaw_deg := 0.0, beam_count := 12, az_spread_deg := 110.0, tilt_min_deg := 6.0, tilt_max_deg := 42.0, ball_radius := 0.33, beam_width := 0.1, dot_max_radius := 8.6, hang := false, dot_rings := 5, dot_per_ring := 12) -> void:
+## Giàn đèn trung tâm kiểu club: quả cầu gương lớn treo trong vòng truss tròn,
+## xung quanh là dàn tia laser tỏa 360° (xuống sàn, ngang và hắt lên trần),
+## đèn spot gắn trên vòng và hoa văn đốm màu dưới sàn. LightingController
+## xoay cả cụm, đổi màu và nhấp theo beat.
+func _add_disco_rig(node_name: String, position: Vector3, palette: Array) -> void:
+	# Kim loại sáng vừa phải để vòng truss đọc được trong club tối (không dựa
+	# vào SSR vì renderer Compatibility không có phản chiếu màn hình).
+	var metal := StandardMaterial3D.new()
+	metal.albedo_color = Color(0.55, 0.58, 0.64)
+	metal.metallic = 0.35
+	metal.roughness = 0.4
+	var ball_radius := 1.35
+	var ring_radius := 5.2
+	var ball_color: Color = palette[0] if not palette.is_empty() else Color(1.0, 0.6, 0.8)
+
 	var pivot := Node3D.new()
 	pivot.name = node_name
 	pivot.position = position
-	pivot.rotation_degrees.y = base_yaw_deg
 	add_child(pivot)
 
-	var full_circle := az_spread_deg >= 359.0
-	var ball_color: Color = palette[0] if not palette.is_empty() else Color(1.0, 0.6, 0.8)
+	# Thanh treo từ trần xuống + nắp quả cầu.
+	var top_local := MAIN_CEIL - position.y
+	var rod_h := maxf(0.2, top_local - ball_radius)
+	_cyl(pivot, node_name + "_Rod", Vector3(0, ball_radius + rod_h * 0.5, 0), 0.05, rod_h, metal, false, 8)
+	_cyl(pivot, node_name + "_Cap", Vector3(0, ball_radius + 0.1, 0), 0.42, 0.2, QBOMaterials.matte_black(), false, 20)
+	_sphere(pivot, node_name + "_Ball", Vector3.ZERO, ball_radius, _crystal_material(ball_color.lerp(Color(1, 1, 1), 0.55)))
 
-	# Vỏ đèn + quả cầu pha lê. Bản treo giữa sàn có nắp và thanh treo lên trần.
-	if hang:
-		_cyl(pivot, node_name + "_Cap", Vector3(0, ball_radius + 0.16, 0), ball_radius * 0.72, 0.32, QBOMaterials.matte_black(), false, 20)
-		var top_local := MAIN_CEIL - position.y
-		var rod_h := maxf(0.15, top_local - ball_radius - 0.32)
-		_cyl(pivot, node_name + "_Rod", Vector3(0, ball_radius + 0.32 + rod_h * 0.5, 0), 0.045, rod_h, QBOMaterials.brushed_metal(), false, 8)
-	else:
-		_box(pivot, node_name + "_Bracket", Vector3(0, ball_radius * 0.9, -ball_radius * 0.9), Vector3(0.18, ball_radius * 1.8, 0.12), QBOMaterials.brushed_metal(), false)
-		for arm in [-1, 1]:
-			_box(pivot, node_name + "_Arm_%d" % arm, Vector3(arm * ball_radius * 1.1, ball_radius * 0.55, -ball_radius * 0.36), Vector3(0.06, ball_radius * 1.5, 0.1), QBOMaterials.brushed_metal(), false)
-		_cyl(pivot, node_name + "_Base", Vector3(0, ball_radius * 1.4, -0.04), ball_radius * 0.9, ball_radius * 1.2, QBOMaterials.matte_black(), false, 18)
-	_sphere(pivot, node_name + "_Ball", Vector3.ZERO, ball_radius, _crystal_material(ball_color))
-
-	var beam_entries: Array = []
-	var count := maxi(1, beam_count)
-	# Chia tia thành 3 vòng bán kính khác nhau cho giống chùm cầu pha lê.
-	var rings := 3
-	var per_ring := int(ceil(float(count) / float(rings)))
-	for i in count:
-		var ring := i % rings
-		var ring_index := int(floor(float(i) / float(rings)))
-		var yaw_deg := 0.0
-		if full_circle:
-			# Vòng tròn đủ 360 độ, so le nửa bước giữa các vòng.
-			yaw_deg = -az_spread_deg * 0.5 + az_spread_deg * float(ring_index) / float(per_ring)
-			yaw_deg += (az_spread_deg / float(per_ring)) * 0.5 * float(ring % 2)
-		else:
-			var ring_t := 0.5 if per_ring <= 1 else float(ring_index) / float(per_ring - 1)
-			yaw_deg = lerpf(-az_spread_deg * 0.5, az_spread_deg * 0.5, ring_t)
-		var yaw := deg_to_rad(yaw_deg)
-		var tilt_factor: float = [0.12, 0.52, 1.0][ring]
-		var tilt := deg_to_rad(lerpf(tilt_min_deg, tilt_max_deg, tilt_factor))
-		# Hướng tia trong không gian cục bộ của cụm đèn.
-		var aim := Vector3(sin(tilt) * sin(yaw), -cos(tilt), sin(tilt) * cos(yaw)).normalized()
-		var dir := (pivot.transform.basis * aim).normalized()
-		var down := maxf(0.05, -dir.y)
-		var landing := position + dir * ((position.y - DANCE_FLOOR_Y) / down)
-		var floor_y := STAGE_FLOOR_Y if landing.z < 0.0 else DANCE_FLOOR_Y
-		# Cộng thêm đoạn dư để tia chắc chắn cắm tới sàn kể cả khi cụm quét.
-		var beam_len := (position.y - floor_y) / down + 0.7
-		var color: Color = palette[i % palette.size()] if not palette.is_empty() else ball_color
-
+	# Vòng truss tròn hai tầng + thanh nối dọc.
+	for i in range(2):
 		var mi := MeshInstance3D.new()
-		mi.name = "%s_Beam_%d" % [node_name, i]
-		var cone := CylinderMesh.new()
-		# Đầu nhỏ ở nguồn (-Y), đầu lớn ở xa (+Y) để tạo hình tia.
-		cone.top_radius = beam_width
-		cone.bottom_radius = maxf(0.008, beam_width * 0.08)
-		cone.height = beam_len
-		cone.radial_segments = 6
-		cone.rings = 1
-		cone.cap_top = false
-		cone.cap_bottom = false
-		mi.mesh = cone
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		var mat := ShaderMaterial.new()
-		mat.shader = LASER_SHADER
-		mat.set_shader_parameter("beam_color", color)
-		mat.set_shader_parameter("intensity", 0.9)
-		mat.set_shader_parameter("edge_softness", 2.2)
-		mat.set_shader_parameter("opacity", 0.28)
-		mi.material_override = mat
-		# Căn +Y của nón theo hướng tia; đầu nguồn nằm đúng tại quả cầu.
-		mi.position = aim * (beam_len * 0.5)
-		mi.quaternion = Quaternion(Vector3.UP, aim)
+		mi.name = "%s_Truss_%d" % [node_name, i]
+		var torus := TorusMesh.new()
+		torus.inner_radius = ring_radius - 0.18
+		torus.outer_radius = ring_radius + 0.18
+		torus.rings = 48
+		torus.ring_segments = 12
+		mi.mesh = torus
+		mi.material_override = metal
+		mi.position.y = 0.55 if i == 0 else -0.55
 		pivot.add_child(mi)
+	for i in range(12):
+		var a := TAU * float(i) / 12.0
+		_cyl(pivot, "%s_TrussStrut_%d" % [node_name, i], Vector3(cos(a) * ring_radius, 0.0, sin(a) * ring_radius), 0.055, 1.1, metal, false, 6)
+	# Nan hoa nối quả cầu với vòng truss.
+	for i in range(8):
+		var a := TAU * float(i) / 8.0
+		var spoke_len := ring_radius - ball_radius - 0.12
+		_box(pivot, "%s_Spoke_%d" % [node_name, i], Vector3(cos(a), 0, sin(a)) * (ball_radius + 0.12 + spoke_len * 0.5), Vector3(spoke_len, 0.07, 0.07), metal, false, -a)
+	# Vòng LED phát sáng trên truss.
+	var led := MeshInstance3D.new()
+	led.name = node_name + "_RingLED"
+	var led_torus := TorusMesh.new()
+	led_torus.inner_radius = ring_radius - 0.035
+	led_torus.outer_radius = ring_radius + 0.035
+	led_torus.rings = 64
+	led_torus.ring_segments = 6
+	led.mesh = led_torus
+	led.position.y = 0.71
+	led.material_override = QBOMaterials.led_dynamic(ball_color, 3.0)
+	pivot.add_child(led)
+	if lighting != null:
+		lighting.register_led(led, ball_color)
+	else:
+		_pending_leds.append({"node": led, "color": ball_color})
 
-		# Đốm sáng nhỏ trên sàn tại điểm tia chạm đất.
-		var pool := MeshInstance3D.new()
-		pool.name = "%s_Dot_%d" % [node_name, i]
-		var quad := PlaneMesh.new()
-		var dot_size := maxf(0.34, beam_width * 2.2)
-		quad.size = Vector2(dot_size, dot_size)
-		pool.mesh = quad
-		pool.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		var pool_mat := ShaderMaterial.new()
-		pool_mat.shader = FLOOR_GLOW_SHADER
-		pool_mat.set_shader_parameter("glow_color", color)
-		pool_mat.set_shader_parameter("intensity", 1.3)
-		pool.material_override = pool_mat
-		var world_aim := (pivot.transform.basis * aim).normalized()
-		pool.position = _laser_floor_point(position, world_aim) + Vector3(0, 0.04, 0)
-		add_child(pool)
+	# Sáu đèn spot gắn trên vòng, hắt xuống quanh sàn nhảy.
+	for i in range(6):
+		var a := TAU * float(i) / 6.0
+		var dir := Vector3(cos(a), 0.0, sin(a))
+		var fixture := Node3D.new()
+		fixture.name = "%s_Fixture_%d" % [node_name, i]
+		fixture.position = dir * (ring_radius - 0.15) + Vector3(0, 0.35, 0)
+		fixture.rotation.y = atan2(-cos(a), -sin(a))
+		pivot.add_child(fixture)
+		_box(fixture, "Body", Vector3.ZERO, Vector3(0.34, 0.4, 0.5), QBOMaterials.matte_black(), false)
+		_box(fixture, "Lens", Vector3(0, -0.12, -0.24), Vector3(0.24, 0.24, 0.06), QBOMaterials.led(ball_color, 2.4), false)
+		var spot := SpotLight3D.new()
+		spot.name = "Spot"
+		spot.position = Vector3(0, -0.12, -0.26)
+		spot.rotation_degrees.x = -74.0
+		spot.light_color = ball_color.lerp(Color(1, 1, 1), 0.5)
+		spot.light_energy = 1.1
+		spot.spot_range = 15.0
+		spot.spot_angle = 36.0
+		spot.spot_attenuation = 1.0
+		spot.light_specular = 0.0
+		spot.shadow_enabled = false
+		spot.distance_fade_enabled = true
+		spot.distance_fade_begin = 9.0
+		spot.distance_fade_length = 5.0
+		fixture.add_child(spot)
+		_register_light("wash", fixture)
+		_managed_lights.append({"node": spot, "shadow": false})
 
-		beam_entries.append({"mesh": mi, "mat": mat, "aim": aim, "pool": pool, "pool_mat": pool_mat, "pool_base": 1.3})
+	# Dàn tia laser tỏa 360°: các vòng từ chúc xuống sàn tới hắt lên trần.
+	var beam_rings := [
+		{"tilt": 16.0, "count": 10},
+		{"tilt": 34.0, "count": 12},
+		{"tilt": 56.0, "count": 12},
+		{"tilt": 78.0, "count": 10},
+		{"tilt": 106.0, "count": 8},
+		{"tilt": 140.0, "count": 8},
+	]
+	var beam_entries: Array = []
+	var beam_index := 0
+	for ring in beam_rings:
+		var tilt := deg_to_rad(float(ring["tilt"]))
+		var count := int(ring["count"])
+		for j in count:
+			var yaw := TAU * float(j) / float(count) + (PI / float(count)) * float(beam_index % 2)
+			var aim := Vector3(sin(tilt) * sin(yaw), -cos(tilt), sin(tilt) * cos(yaw)).normalized()
+			var start := aim * ball_radius
+			# Chiều dài tia: dừng ở sàn/trần để không xuyên qua kết cấu.
+			var beam_len := 13.0
+			if aim.y < -0.05:
+				beam_len = minf(beam_len, (position.y + start.y - DANCE_FLOOR_Y) / maxf(0.05, -aim.y))
+			elif aim.y > 0.05:
+				beam_len = minf(beam_len, (MAIN_CEIL - (position.y + start.y)) / aim.y)
+			beam_len = maxf(2.0, beam_len)
+			var color: Color = palette[beam_index % palette.size()] if not palette.is_empty() else ball_color
 
-	# Hoa văn đốm màu trên sàn kiểu đèn cầu pha lê.
-	var dot_nodes := _add_dot_field(pivot, position, palette, deg_to_rad(base_yaw_deg), dot_rings, dot_per_ring, maxf(1.0, ball_radius * 1.6), dot_max_radius, az_spread_deg)
+			var mi := MeshInstance3D.new()
+			mi.name = "%s_Beam_%d" % [node_name, beam_index]
+			var cone := CylinderMesh.new()
+			# Đầu gần quả cầu nhỏ, đầu xa loe nhẹ; không nhọn như kim.
+			cone.top_radius = 0.18
+			cone.bottom_radius = 0.05
+			cone.height = beam_len
+			cone.radial_segments = 8
+			cone.rings = 1
+			cone.cap_top = false
+			cone.cap_bottom = false
+			mi.mesh = cone
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			var mat := ShaderMaterial.new()
+			mat.shader = LASER_SHADER
+			mat.set_shader_parameter("beam_color", color)
+			mat.set_shader_parameter("intensity", 0.9)
+			mat.set_shader_parameter("edge_softness", 1.4)
+			mat.set_shader_parameter("opacity", 0.11)
+			mi.material_override = mat
+			mi.position = start + aim * (beam_len * 0.5)
+			mi.quaternion = Quaternion(Vector3.UP, aim)
+			pivot.add_child(mi)
+			beam_entries.append({"mesh": mi, "mat": mat, "aim": aim})
+			beam_index += 1
 
-	# Vũng sáng rộng phủ gần 360 độ quanh đèn.
+	# Hoa văn đốm màu trên sàn kiểu quả cầu gương.
+	var dot_nodes := _add_dot_field(pivot, position, palette, 0.0, 6, 16, 2.0, 12.0, 360.0)
+
+	# Vũng sáng rộng, rất nhẹ để không tạo cục cháy trên sàn.
 	var wash := MeshInstance3D.new()
 	wash.name = node_name + "_Wash"
 	var wash_mesh := PlaneMesh.new()
-	wash_mesh.size = Vector2(dot_max_radius * 2.2, dot_max_radius * 2.2)
+	wash_mesh.size = Vector2(30.0, 30.0)
 	wash.mesh = wash_mesh
 	wash.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var wash_mat := ShaderMaterial.new()
 	wash_mat.shader = FLOOR_GLOW_SHADER
-	wash_mat.set_shader_parameter("glow_color", ball_color.lerp(Color(1, 1, 1), 0.6))
-	wash_mat.set_shader_parameter("intensity", 0.4)
+	wash_mat.set_shader_parameter("glow_color", ball_color.lerp(Color(1, 1, 1), 0.5))
+	wash_mat.set_shader_parameter("intensity", 0.07)
+	wash_mat.set_shader_parameter("falloff_power", 1.5)
 	wash.material_override = wash_mat
 	wash.position = Vector3(position.x, DANCE_FLOOR_Y + 0.02, position.z)
 	add_child(wash)
 	dot_nodes.append(wash)
 
-	# Đèn thật hắt màu xuống vùng sàn mà chùm tia chiếu tới.
-	var spot := SpotLight3D.new()
-	spot.name = node_name + "_FloorGlow"
-	spot.light_color = ball_color.lerp(Color(1, 1, 1), 0.55)
-	spot.light_energy = 4.0 if full_circle else 2.6
-	spot.spot_range = 26.0 if full_circle else 17.0
-	spot.spot_angle = 110.0 if full_circle else 58.0
-	spot.spot_attenuation = 0.6
-	spot.shadow_enabled = false
-	spot.distance_fade_enabled = true
-	spot.distance_fade_begin = 11.0
-	spot.distance_fade_length = 6.0
-	spot.rotation_degrees.x = -90.0 if full_circle else -(90.0 + (tilt_min_deg + tilt_max_deg) * 0.5)
-	pivot.add_child(spot)
-	_managed_lights.append({"node": spot, "shadow": false})
-
-	_register_laser(pivot, beam_entries, spot, deg_to_rad(base_yaw_deg), dot_nodes)
+	_register_laser(pivot, beam_entries, null, 0.0, dot_nodes)
 
 
 ## Material quả cầu pha lê: bề mặt khảm gương nhỏ, phát sáng như đèn disco ball.
@@ -472,7 +505,7 @@ func _add_dot_field(pivot: Node3D, origin: Vector3, palette: Array, base_yaw: fl
 			var world_z := origin.z + local.z
 			var floor_y := STAGE_FLOOR_Y
 			if world_z >= 0.0:
-				var on_dance := absf(world_x) <= 14.0 and world_z >= 0.8 and world_z <= 12.2
+				var on_dance := absf(world_x) <= 20.0 and world_z >= 0.8 and world_z <= 12.2
 				floor_y = DANCE_FLOOR_Y if on_dance else 0.0
 			# Nâng lên 0.045 để đốm không bị chìm/ z-fighting với mặt sàn.
 			local.y = floor_y + 0.045
@@ -484,17 +517,6 @@ func _add_dot_field(pivot: Node3D, origin: Vector3, palette: Array, base_yaw: fl
 				next_index[g] = idx + 1
 			slot += 1
 	return nodes
-
-
-## Điểm tia chạm sàn: sàn nhảy y=0.06, hoặc mặt bục sân khấu y=1.03 nếu rơi trên bục.
-func _laser_floor_point(origin: Vector3, aim: Vector3) -> Vector3:
-	var down := maxf(0.05, -aim.y)
-	var t := (origin.y - DANCE_FLOOR_Y) / down
-	var point := origin + aim * t
-	if point.z < 0.0:
-		t = (origin.y - STAGE_FLOOR_Y) / down
-		point = origin + aim * t
-	return point
 
 
 func _register_laser(pivot: Node3D, beams: Array, spot: Light3D, base_yaw: float, dots: Array = []) -> void:
@@ -544,24 +566,24 @@ func _build_shell() -> void:
 	var ceiling_mat := QBOMaterials.ceiling_panel()
 
 	# Sàn toàn bộ building (3 lớp để chống xuyên qua ở mối nối).
-	_box(self, "Floor_Main", Vector3(0, -0.2, -1), Vector3(64.8, 0.4, 54.8), marble)
-	_box(self, "Ceiling_MainHall", Vector3(0, MAIN_CEIL + 0.15, 5), Vector3(64.8, 0.3, 22.4), ceiling_mat)
-	_box(self, "Ceiling_Lobby", Vector3(0, LOBBY_CEIL + 0.15, 21), Vector3(26.4, 0.3, 10.4), ceiling_mat)
-	_box(self, "Ceiling_Back", Vector3(0, BACK_CEIL + 0.15, -19), Vector3(64.8, 0.3, 14.4), ceiling_mat)
+	_box(self, "Floor_Main", Vector3(0, -0.2, -1), Vector3(80.0, 0.4, 54.8), marble)
+	_box(self, "Ceiling_MainHall", Vector3(0, MAIN_CEIL + 0.15, 5), Vector3(80.0, 0.3, 22.4), ceiling_mat)
+	_box(self, "Ceiling_Lobby", Vector3(0, LOBBY_CEIL + 0.15, 21), Vector3(80.0, 0.3, 10.4), ceiling_mat)
+	_box(self, "Ceiling_Back", Vector3(0, BACK_CEIL + 0.15, -19), Vector3(80.0, 0.3, 14.4), ceiling_mat)
 
 	# Tường ngoài.
-	_box(self, "Wall_West", Vector3(-32.3, 5, 0), Vector3(0.6, 10, 52.6), wall_mat)
-	_box(self, "Wall_East", Vector3(32.3, 5, 0), Vector3(0.6, 10, 52.6), wall_mat)
-	_box(self, "Wall_North", Vector3(0, 5, -26.3), Vector3(64.8, 10, 0.6), wall_mat)
+	_box(self, "Wall_West", Vector3(-40.3, MAIN_CEIL * 0.5, 0), Vector3(0.6, MAIN_CEIL, 52.6), wall_mat)
+	_box(self, "Wall_East", Vector3(40.3, MAIN_CEIL * 0.5, 0), Vector3(0.6, MAIN_CEIL, 52.6), wall_mat)
+	_box(self, "Wall_North", Vector3(0, MAIN_CEIL * 0.5, -26.3), Vector3(80.0, MAIN_CEIL, 0.6), wall_mat)
 
 	# Mặt tiền phía nam, chừa cửa chính rộng 6m.
-	_box(self, "Facade_L", Vector3(-19, 5, 26.3), Vector3(26.8, 10, 0.6), wall_mat)
-	_box(self, "Facade_R", Vector3(19, 5, 26.3), Vector3(26.8, 10, 0.6), wall_mat)
+	_box(self, "Facade_L", Vector3(-23.0, MAIN_CEIL * 0.5, 26.3), Vector3(34.0, MAIN_CEIL, 0.6), wall_mat)
+	_box(self, "Facade_R", Vector3(23.0, MAIN_CEIL * 0.5, 26.3), Vector3(34.0, MAIN_CEIL, 0.6), wall_mat)
 	_box(self, "Facade_Header", Vector3(0, 8, 26.3), Vector3(11.4, 4, 0.6), marble)
 
 	# Vách lobby / main hall, chừa cổng vòm 12m.
-	_box(self, "LobbyWall_W", Vector3(-22, 4, 16), Vector3(20, 8, 0.5), wall_mat)
-	_box(self, "LobbyWall_E", Vector3(22, 4, 16), Vector3(20, 8, 0.5), wall_mat)
+	_box(self, "LobbyWall_W", Vector3(-23, 4, 16), Vector3(34, 8, 0.5), wall_mat)
+	_box(self, "LobbyWall_E", Vector3(23, 4, 16), Vector3(34, 8, 0.5), wall_mat)
 	_box(self, "LobbyArch_Header", Vector3(0, 6.4, 16), Vector3(12, 3.2, 0.5), marble)
 	# Cổng vòm mạ vàng.
 	for side in [-1, 1]:
@@ -569,29 +591,29 @@ func _build_shell() -> void:
 	_box(self, "ArchGold_Top", Vector3(0, 6.55, 16), Vector3(12.7, 0.35, 0.65), QBOMaterials.gold())
 
 	# Cột kết cấu trong main hall.
-	for x in [-18.0, 18.0]:
-		_box(self, "Column_%d" % int(x), Vector3(x, 5, 5), Vector3(1.1, 10, 1.1), marble)
+	for x in [-26.0, 26.0]:
+		_box(self, "Column_%d" % int(x), Vector3(x, MAIN_CEIL * 0.5, 5), Vector3(1.1, MAIN_CEIL, 1.1), marble)
 		_box(self, "ColumnGold_%d" % int(x), Vector3(x, 2.6, 5), Vector3(1.25, 0.14, 1.25), QBOMaterials.gold())
-		_box(self, "ColumnGold2_%d" % int(x), Vector3(x, 7.6, 5), Vector3(1.25, 0.14, 1.25), QBOMaterials.gold())
+		_box(self, "ColumnGold2_%d" % int(x), Vector3(x, 13.1, 5), Vector3(1.25, 0.14, 1.25), QBOMaterials.gold())
 
 	# Trần coffered + dầm.
 	for i in range(5):
-		_box(self, "CeilingBeam_%d" % i, Vector3(0, MAIN_CEIL - 0.4, -3 + i * 4.4), Vector3(64, 0.5, 0.45), QBOMaterials.matte_black())
+		_box(self, "CeilingBeam_%d" % i, Vector3(0, MAIN_CEIL - 0.4, -3 + i * 4.4), Vector3(79, 0.5, 0.45), QBOMaterials.matte_black())
 	# LED trần chạy dọc main hall.
 	for side in [-1, 1]:
-		_led_strip(Vector3(side * 24, MAIN_CEIL - 0.55, 5), Vector3(0.18, 0.08, 20), Color(0.85, 0.55, 1.0))
-		_led_strip(Vector3(side * 29, 0.12, 5), Vector3(0.12, 0.1, 20), Color(0.35, 0.7, 1.0))
+		_led_strip(Vector3(side * 30, MAIN_CEIL - 0.55, 5), Vector3(0.18, 0.08, 20), Color(0.85, 0.55, 1.0))
+		_led_strip(Vector3(side * 37, 0.12, 5), Vector3(0.12, 0.1, 20), Color(0.35, 0.7, 1.0))
 	# Hào quang trần giữa hall (đọc được kết cấu trần, tránh trần đen tuyệt đối).
 	for side in [-1, 1]:
 		_led_strip(Vector3(side * 7.5, MAIN_CEIL - 0.62, 5), Vector3(0.14, 0.05, 18), Color(1.0, 0.7, 0.42))
 		_led_strip(Vector3(side * 4.5, MAIN_CEIL - 0.62, 5), Vector3(0.1, 0.05, 18), Color(1.0, 0.78, 0.52))
-	_add_omni("CeilingCove_W", Vector3(-10, 9.1, 5), Color(1.0, 0.72, 0.45), 2.2, 20.0)
-	_add_omni("CeilingCove_E", Vector3(10, 9.1, 5), Color(1.0, 0.72, 0.45), 2.2, 20.0)
+	_add_omni("CeilingCove_W", Vector3(-10, MAIN_CEIL - 0.9, 5), Color(1.0, 0.72, 0.45), 2.2, 20.0)
+	_add_omni("CeilingCove_E", Vector3(10, MAIN_CEIL - 0.9, 5), Color(1.0, 0.72, 0.45), 2.2, 20.0)
 
 	# Hào quang trần lobby.
-	_box(self, "LobbyCove", Vector3(0, LOBBY_CEIL - 0.5, 21), Vector3(20, 0.25, 8), QBOMaterials.matte_black())
+	_box(self, "LobbyCove", Vector3(0, LOBBY_CEIL - 0.5, 21), Vector3(28, 0.25, 8), QBOMaterials.matte_black())
 	for i in range(7):
-		_led_strip(Vector3(-9 + i * 3, LOBBY_CEIL - 0.62, 21), Vector3(0.1, 0.06, 7.6), Color(1.0, 0.72, 0.42))
+		_led_strip(Vector3(-12 + i * 4, LOBBY_CEIL - 0.62, 21), Vector3(0.1, 0.06, 7.6), Color(1.0, 0.72, 0.42))
 
 
 func _build_lobby() -> void:
@@ -718,59 +740,59 @@ func _chandelier(position: Vector3, color: Color, scale_factor := 1.0) -> void:
 func _build_main_hall() -> void:
 	var gold := QBOMaterials.gold()
 	# Viền sàn nhảy.
-	_box(self, "DanceFloorTrim", Vector3(0, 0.04, 6.5), Vector3(29.6, 0.08, 12.6), gold, false)
+	_box(self, "DanceFloorTrim", Vector3(0, 0.04, 6.5), Vector3(41.6, 0.08, 12.6), gold, false)
 	# Lan can trang trí hai bên sàn nhảy.
 	for side in [-1, 1]:
 		for i in range(5):
-			_cyl(self, "RailPost_%d_%d" % [side, i], Vector3(side * 15.2, 0.55, 1.5 + i * 2.3), 0.04, 1.1, gold, false, 8)
-		_box(self, "RailTop_%d" % side, Vector3(side * 15.2, 1.12, 6.5), Vector3(0.07, 0.07, 10), gold, false)
+			_cyl(self, "RailPost_%d_%d" % [side, i], Vector3(side * 21.2, 0.55, 1.5 + i * 2.3), 0.04, 1.1, gold, false, 8)
+		_box(self, "RailTop_%d" % side, Vector3(side * 21.2, 1.12, 6.5), Vector3(0.07, 0.07, 10), gold, false)
 	# Cột mạ vàng lớn hai bên sân khấu.
 	for side in [-1, 1]:
-		_box(self, "StagePillar_%d" % side, Vector3(side * 17.4, 4, -2), Vector3(0.9, 8, 0.9), QBOMaterials.marble_light())
-		_led_strip(Vector3(side * 17.4, 4, -1.52), Vector3(0.06, 6.5, 0.06), Color(1.0, 0.65, 0.3))
+		_box(self, "StagePillar_%d" % side, Vector3(side * 23.4, 5.5, -2), Vector3(0.9, 11, 0.9), QBOMaterials.marble_light())
+		_led_strip(Vector3(side * 23.4, 5.5, -1.52), Vector3(0.06, 9.0, 0.06), Color(1.0, 0.65, 0.3))
 
 	# Bàn tiệc hai bên sàn nhảy.
 	for i in range(3):
 		var z := 2.0 + i * 3.0
 		for side in [-1, 1]:
-			_table(Vector3(side * 20.0, 0, z), 0.9)
-			_chair(Vector3(side * 20.0, 0, z + 1.4), PI)
-			_chair(Vector3(side * 20.0, 0, z - 1.4), 0.0)
+			_table(Vector3(side * 28.5, 0, z), 0.9)
+			_chair(Vector3(side * 28.5, 0, z + 1.4), PI)
+			_chair(Vector3(side * 28.5, 0, z - 1.4), 0.0)
 
 	# Đèn trần chính + moving head.
 	for i in range(6):
-		var x := -20.0 + i * 8.0
+		var x := -28.0 + i * 11.2
 		_add_omni("CeilingWash_%d" % i, Vector3(x, MAIN_CEIL - 0.9, 9.0), Color(0.9, 0.55, 0.75), 2.6, 15.0)
 	# Đèn phụ chiếu sàn nhảy để nhân vật luôn đọc được trong ánh sáng club.
 	for i in range(4):
-		var fill_x := -15.0 + i * 10.0
+		var fill_x := -21.0 + i * 14.0
 		_add_omni("DanceWash_%d" % i, Vector3(fill_x, 3.6, 7.5), Color(1.0, 0.62, 0.8), 1.9, 11.0)
 	for i in range(4):
-		_add_spot("HallSpot_%d" % i, Vector3(-12.0 + i * 8.0, MAIN_CEIL - 1.2, 5.0), Color(1.0, 0.45, 0.7), 3.0, 20.0, 34.0, i < 2)
+		_add_spot("HallSpot_%d" % i, Vector3(-21.0 + i * 14.0, MAIN_CEIL - 1.2, 5.0), Color(1.0, 0.45, 0.7), 3.0, 20.0, 34.0, i < 2)
 
 	# Loa treo tường.
 	for side in [-1, 1]:
 		for z in [3.0, 11.0]:
-			_box(self, "WallSpeaker_%d_%d" % [side, int(z)], Vector3(side * 30.5, 5.5, z), Vector3(1.0, 1.6, 1.0), QBOMaterials.matte_black())
-			var cone := _cyl(self, "SpeakerCone_%d_%d" % [side, int(z)], Vector3(side * 29.95, 5.5, z), 0.34, 0.12, QBOMaterials.brushed_metal(), false, 18)
+			_box(self, "WallSpeaker_%d_%d" % [side, int(z)], Vector3(side * 38.5, 5.5, z), Vector3(1.0, 1.6, 1.0), QBOMaterials.matte_black())
+			var cone := _cyl(self, "SpeakerCone_%d_%d" % [side, int(z)], Vector3(side * 37.95, 5.5, z), 0.34, 0.12, QBOMaterials.brushed_metal(), false, 18)
 			cone.rotation_degrees.z = 90.0
 
 
 func _build_dance_floor() -> void:
 	var floor_mat := QBOMaterials.black_gloss()
-	_box(self, "DanceFloor", Vector3(0, 0.03, 6.5), Vector3(28, 0.06, 11.4), floor_mat, false)
+	_box(self, "DanceFloor", Vector3(0, 0.03, 6.5), Vector3(40, 0.06, 11.4), floor_mat, false)
 	# Sàn liền mạch, không chia ô vuông; chỉ giữ viền LED quanh sàn.
 	# Vòng LED quanh sàn.
 	for side in [-1, 1]:
-		_led_strip(Vector3(side * 14.2, 0.1, 6.5), Vector3(0.08, 0.08, 11.4), Color(0.25, 0.75, 1.0))
-	_led_strip(Vector3(0, 0.1, 12.2), Vector3(28.4, 0.08, 0.08), Color(1.0, 0.3, 0.55))
+		_led_strip(Vector3(side * 20.2, 0.1, 6.5), Vector3(0.08, 0.08, 11.4), Color(0.25, 0.75, 1.0))
+	_led_strip(Vector3(0, 0.1, 12.2), Vector3(40.4, 0.08, 0.08), Color(1.0, 0.3, 0.55))
 
 
 # ------------------------------------------------------------------ stage
 
 func _build_stage() -> void:
 	var stage_mat := QBOMaterials.black_gloss()
-	var deck_w := 26.0
+	var deck_w := 34.0
 	var deck_front := 0.0
 	var deck_back := -6.2
 	var deck_z := (deck_front + deck_back) * 0.5
@@ -786,12 +808,12 @@ func _build_stage() -> void:
 	_box(self, "StageStep2", Vector3(0, 0.5, 0.15), Vector3(6, 0.34, 0.5), stage_mat)
 
 	# Tường hậu phía sau TV: tấm ốp tối để màn hình "treo" thay vì lơ lửng.
-	_box(self, "StageBackdrop", Vector3(0, 5.1, -6.45), Vector3(22.0, 9.6, 0.4), QBOMaterials.wall_panel())
-	_box(self, "StageBackdropGold", Vector3(0, 9.72, -6.22), Vector3(22.0, 0.12, 0.3), QBOMaterials.gold(), false)
-	_led_strip(Vector3(0, 9.6, -6.2), Vector3(21.0, 0.06, 0.06), Color(0.55, 0.4, 1.0))
-	_led_strip(Vector3(0, 1.34, -6.2), Vector3(20.6, 0.05, 0.05), Color(0.4, 0.75, 1.0))
+	_box(self, "StageBackdrop", Vector3(0, 6.9, -6.45), Vector3(28.0, 13.2, 0.4), QBOMaterials.wall_panel())
+	_box(self, "StageBackdropGold", Vector3(0, 13.2, -6.22), Vector3(28.0, 0.12, 0.3), QBOMaterials.gold(), false)
+	_led_strip(Vector3(0, 13.0, -6.2), Vector3(27.0, 0.06, 0.06), Color(0.55, 0.4, 1.0))
+	_led_strip(Vector3(0, 1.34, -6.2), Vector3(26.6, 0.05, 0.05), Color(0.4, 0.75, 1.0))
 	for side in [-1, 1]:
-		_led_strip(Vector3(side * 9.2, 5.5, -6.2), Vector3(0.08, 8.1, 0.08), Color(1.0, 0.3, 0.55) if side < 0 else Color(0.35, 0.7, 1.0))
+		_led_strip(Vector3(side * 13.2, 6.9, -6.2), Vector3(0.08, 11.4, 0.08), Color(1.0, 0.3, 0.55) if side < 0 else Color(0.35, 0.7, 1.0))
 
 	# TV dài ở giữa (20:9) — màn hình chính phát nhạc DJ / video MP4.
 	stage_screen_material = QBOMaterials.screen()
@@ -880,32 +902,26 @@ func _build_stage() -> void:
 
 	# Loa chính đứng trên sàn sân khấu, hai bên TV.
 	for side in [-1, 1]:
-		_box(self, "MainSpeaker_%d" % side, Vector3(side * 7.9, 2.2, -4.0), Vector3(1.7, 2.4, 1.6), QBOMaterials.matte_black())
+		_box(self, "MainSpeaker_%d" % side, Vector3(side * 11.0, 2.2, -4.0), Vector3(1.7, 2.4, 1.6), QBOMaterials.matte_black())
 		for k in range(2):
-			var cone := _cyl(self, "SpeakCone_%d_%d" % [side, k], Vector3(side * 7.9, 1.65 + k * 1.05, -3.18), 0.5 - k * 0.12, 0.14, QBOMaterials.brushed_metal(), false, 24)
+			var cone := _cyl(self, "SpeakCone_%d_%d" % [side, k], Vector3(side * 11.0, 1.65 + k * 1.05, -3.18), 0.5 - k * 0.12, 0.14, QBOMaterials.brushed_metal(), false, 24)
 			cone.rotation_degrees.x = 90.0
-		_led_strip(Vector3(side * 7.9, 3.45, -4.0), Vector3(1.4, 0.05, 1.4), Color(1.0, 0.3, 0.5))
+		_led_strip(Vector3(side * 11.0, 3.45, -4.0), Vector3(1.4, 0.05, 1.4), Color(1.0, 0.3, 0.5))
 	# Monitor wedge hướng về DJ.
 	for side in [-1, 1]:
 		_box(self, "StageMonitor_%d" % side, Vector3(side * 3.6, 1.25, -0.8), Vector3(1.1, 0.5, 0.7), QBOMaterials.matte_black())
 
-	# Giàn truss đưa ra phía trước sân khấu để không cắt ngang TV.
-	for side in [-1, 1]:
-		_box(self, "TrussPost_%d" % side, Vector3(side * 12.4, 5.5, -1.1), Vector3(0.18, 9.0, 0.18), QBOMaterials.brushed_metal())
-	_box(self, "TrussBeam", Vector3(0, 9.85, -1.1), Vector3(25.0, 0.18, 0.18), QBOMaterials.brushed_metal())
-	_box(self, "TrussBeam2", Vector3(0, 9.15, -1.1), Vector3(25.0, 0.14, 0.14), QBOMaterials.brushed_metal())
-	# Một quả cầu pha lê lớn treo giữa sàn nhảy, chiếu tia và đốm màu xuống
-	# quanh nó (không gắn đèn dọc sân khấu).
-	var ball_palette := [Color(1.0, 0.25, 0.65), Color(0.25, 0.85, 1.0), Color(0.75, 0.35, 1.0), Color(1.0, 0.95, 0.7), Color(0.3, 1.0, 0.55)]
-	_add_magic_ball("CenterMagicBall", Vector3(0.0, 7.8, 6.5), ball_palette, 0.0, 18, 360.0, 4.0, 50.0, 0.85, 0.09, 9.5, true, 7, 20)
+	# Quả cầu gương lớn + vòng truss + dàn laser tỏa 360° giữa sàn nhảy.
+	var ball_palette := [Color(1.0, 0.25, 0.65), Color(0.25, 0.85, 1.0), Color(0.75, 0.35, 1.0), Color(1.0, 0.95, 0.7), Color(0.3, 1.0, 0.55), Color(1.0, 0.55, 0.15)]
+	_add_disco_rig("CenterMirrorBall", Vector3(0.0, 8.6, 6.5), ball_palette)
 
 	# Trống/percussion trang trí bên phải sân khấu.
-	_cyl(self, "Drum1", Vector3(10.4, 1.65, -4.4), 0.45, 0.7, QBOMaterials.brushed_metal(), false, 24)
-	_cyl(self, "Drum2", Vector3(11.3, 1.65, -4.9), 0.35, 0.6, QBOMaterials.brushed_metal(), false, 24)
+	_cyl(self, "Drum1", Vector3(13.6, 1.65, -4.4), 0.45, 0.7, QBOMaterials.brushed_metal(), false, 24)
+	_cyl(self, "Drum2", Vector3(14.5, 1.65, -4.9), 0.35, 0.6, QBOMaterials.brushed_metal(), false, 24)
 
 	# Ánh sáng hắt màu phía sau TV.
 	for i in range(3):
-		_add_omni("StageWash_%d" % i, Vector3(-8 + i * 8, 8.2, -4.6), Color(0.7, 0.3, 1.0), 1.6, 10.0)
+		_add_omni("StageWash_%d" % i, Vector3(-10 + i * 10, 10.6, -4.6), Color(0.7, 0.3, 1.0), 1.6, 10.0)
 
 
 # ------------------------------------------------------------------ bar
@@ -916,39 +932,39 @@ func _build_bar() -> void:
 	var gold := QBOMaterials.gold()
 
 	# Sàn khu bar.
-	_box(self, "BarFloor", Vector3(-28, 0.02, 5), Vector3(8, 0.04, 15), QBOMaterials.wood_dark(), false)
+	_box(self, "BarFloor", Vector3(-35, 0.02, 5), Vector3(8, 0.04, 15), QBOMaterials.wood_dark(), false)
 	# Quầy bar.
-	_box(self, "BarBase", Vector3(-26.2, 0.55, 5.0), Vector3(2.6, 1.1, 13.0), wood)
-	_box(self, "BarTop", Vector3(-26.2, 1.13, 5.0), Vector3(3.2, 0.12, 13.4), marble)
-	_led_strip(Vector3(-24.88, 0.75, 5.0), Vector3(0.06, 0.06, 12.8), Color(1.0, 0.45, 0.65))
+	_box(self, "BarBase", Vector3(-33.2, 0.55, 5.0), Vector3(2.6, 1.1, 13.0), wood)
+	_box(self, "BarTop", Vector3(-33.2, 1.13, 5.0), Vector3(3.2, 0.12, 13.4), marble)
+	_led_strip(Vector3(-31.88, 0.75, 5.0), Vector3(0.06, 0.06, 12.8), Color(1.0, 0.45, 0.65))
 	# Tủ kính sau quầy.
-	_box(self, "BackBar", Vector3(-31.0, 2.6, 5.0), Vector3(1.0, 4.2, 13.0), QBOMaterials.wall_panel())
+	_box(self, "BackBar", Vector3(-39.0, 2.6, 5.0), Vector3(1.0, 4.2, 13.0), QBOMaterials.wall_panel())
 	for row in range(3):
 		var y := 1.1 + row * 1.05
-		_box(self, "Shelf_%d" % row, Vector3(-30.3, y, 5.0), Vector3(0.8, 0.08, 12.4), gold)
+		_box(self, "Shelf_%d" % row, Vector3(-38.3, y, 5.0), Vector3(0.8, 0.08, 12.4), gold)
 		for i in range(14):
 			var z := -0.55 + i * 0.8
 			var color := Color(0.35 + row * 0.16, 0.08, 0.1) if (i + row) % 2 == 0 else Color(0.5, 0.4, 0.15)
-			_cyl(self, "Bottle_%d_%d" % [row, i], Vector3(-30.28, y + 0.22, z), 0.055, 0.36, QBOMaterials.glass(color), false, 10)
-	_led_strip(Vector3(-29.95, 4.5, 5.0), Vector3(0.06, 0.05, 12.4), Color(0.4, 0.75, 1.0))
-	_label(self, "CHROME LOTUS BAR", Vector3(-29.9, 4.9, 5.0), 46, Color(0.95, 0.8, 0.55), PI * 0.5)
+			_cyl(self, "Bottle_%d_%d" % [row, i], Vector3(-38.28, y + 0.22, z), 0.055, 0.36, QBOMaterials.glass(color), false, 10)
+	_led_strip(Vector3(-37.95, 4.5, 5.0), Vector3(0.06, 0.05, 12.4), Color(0.4, 0.75, 1.0))
+	_label(self, "CHROME LOTUS BAR", Vector3(-37.9, 4.9, 5.0), 46, Color(0.95, 0.8, 0.55), PI * 0.5)
 
 	# Ghế bar.
 	for i in range(8):
-		_bar_stool(Vector3(-23.3, 0, -0.8 + i * 1.6))
+		_bar_stool(Vector3(-30.3, 0, -0.8 + i * 1.6))
 	# Đèn thả trần.
 	for i in range(5):
 		var z := -1.0 + i * 3.0
-		_cyl(self, "PendantCord_%d" % i, Vector3(-26.2, 3.1, z), 0.015, 2.4, QBOMaterials.matte_black(), false, 6)
-		_cyl(self, "PendantShade_%d" % i, Vector3(-26.2, 1.95, z), 0.28, 0.3, QBOMaterials.gold(), false, 18)
-		_sphere(self, "PendantBulb_%d" % i, Vector3(-26.2, 1.8, z), 0.08, QBOMaterials.led(Color(1.0, 0.78, 0.5), 3.0))
-		_add_omni("BarLight_%d" % i, Vector3(-26.2, 1.8, z), Color(1.0, 0.72, 0.45), 2.0, 7.5)
+		_cyl(self, "PendantCord_%d" % i, Vector3(-33.2, 3.1, z), 0.015, 2.4, QBOMaterials.matte_black(), false, 6)
+		_cyl(self, "PendantShade_%d" % i, Vector3(-33.2, 1.95, z), 0.28, 0.3, QBOMaterials.gold(), false, 18)
+		_sphere(self, "PendantBulb_%d" % i, Vector3(-33.2, 1.8, z), 0.08, QBOMaterials.led(Color(1.0, 0.78, 0.5), 3.0))
+		_add_omni("BarLight_%d" % i, Vector3(-33.2, 1.8, z), Color(1.0, 0.72, 0.45), 2.0, 7.5)
 	# Máy pha chế + ly.
-	_cyl(self, "Shaker", Vector3(-25.8, 1.35, 8.5), 0.1, 0.3, QBOMaterials.mirror(), false, 12)
+	_cyl(self, "Shaker", Vector3(-32.8, 1.35, 8.5), 0.1, 0.3, QBOMaterials.mirror(), false, 12)
 	for i in range(6):
-		_cyl(self, "Glass_%d" % i, Vector3(-25.6 + (i % 3) * 0.18, 1.34, 6.5 + (i / 3) * 0.3), 0.05, 0.22, QBOMaterials.glass(), false, 10)
+		_cyl(self, "Glass_%d" % i, Vector3(-32.6 + (i % 3) * 0.18, 1.34, 6.5 + (i / 3) * 0.3), 0.05, 0.22, QBOMaterials.glass(), false, 10)
 
-	_add_interactable("bar_counter", "Gọi đồ uống tại quầy bar", "bar", Vector3(-24.7, 1.2, 5.0), {}, Vector3(0.9, 1.6, 12.0))
+	_add_interactable("bar_counter", "Gọi đồ uống tại quầy bar", "bar", Vector3(-31.7, 1.2, 5.0), {}, Vector3(0.9, 1.6, 12.0))
 
 
 # ------------------------------------------------------------------ VIP lounge
@@ -957,24 +973,24 @@ func _build_vip_lounge() -> void:
 	var gold := QBOMaterials.gold()
 	var leather := QBOMaterials.leather(Color(0.22, 0.03, 0.07))
 	# Bục VIP.
-	_box(self, "VIPPlatform", Vector3(28.0, 0.22, 5), Vector3(7.4, 0.44, 13), QBOMaterials.marble_dark())
-	_led_strip(Vector3(24.3, 0.3, 5), Vector3(0.06, 0.06, 13), Color(1.0, 0.72, 0.35))
+	_box(self, "VIPPlatform", Vector3(35.0, 0.22, 5), Vector3(7.4, 0.44, 13), QBOMaterials.marble_dark())
+	_led_strip(Vector3(31.3, 0.3, 5), Vector3(0.06, 0.06, 13), Color(1.0, 0.72, 0.35))
 	# Lan can + dây nhung.
-	_box(self, "VIPRail", Vector3(24.25, 0.85, 5), Vector3(0.08, 0.08, 12.6), gold, false)
+	_box(self, "VIPRail", Vector3(31.25, 0.85, 5), Vector3(0.08, 0.08, 12.6), gold, false)
 	for i in range(5):
-		_cyl(self, "VIPPost_%d" % i, Vector3(24.25, 0.62, -0.5 + i * 2.8), 0.035, 1.2, gold, false, 8)
+		_cyl(self, "VIPPost_%d" % i, Vector3(31.25, 0.62, -0.5 + i * 2.8), 0.035, 1.2, gold, false, 8)
 	# Sofa VIP.
-	_sofa(Vector3(29.6, 0.44, 1.6), PI * 0.5, leather, 3.2)
-	_sofa(Vector3(29.6, 0.44, 7.0), PI * 0.5, leather, 3.2)
-	_table(Vector3(27.4, 0.44, 4.3), 1.0)
+	_sofa(Vector3(36.6, 0.44, 1.6), PI * 0.5, leather, 3.2)
+	_sofa(Vector3(36.6, 0.44, 7.0), PI * 0.5, leather, 3.2)
+	_table(Vector3(34.4, 0.44, 4.3), 1.0)
 	# Bàn VIP + xô champagne.
-	_cyl(self, "VIPBucket", Vector3(27.4, 1.65, 4.3), 0.22, 0.3, QBOMaterials.gold(), false, 18)
-	_cyl(self, "VIPBottle", Vector3(27.4, 1.95, 4.3), 0.07, 0.4, QBOMaterials.glass(Color(0.6, 0.5, 0.1, 0.4)), false, 10)
-	_label(self, "VIP", Vector3(24.0, 2.4, 5.0), 60, Color(1.0, 0.82, 0.5), PI * 0.5)
-	_chandelier(Vector3(28.0, 4.4, 4.6), Color(1.0, 0.78, 0.42), 0.7)
-	_add_omni("VIPChandelier", Vector3(28.0, 4.2, 4.6), Color(1.0, 0.72, 0.42), 3.2, 11.0)
-	_led_strip(Vector3(31.6, 0.5, 5), Vector3(0.06, 0.85, 12.6), Color(0.9, 0.5, 1.0))
-	_add_interactable("vip_sofa", "Ngồi khu VIP", "seat", Vector3(29.0, 0.9, 1.6), {"seat": Vector3(28.9, 0.95, 1.6), "yaw": -PI * 0.5}, Vector3(1.6, 2.0, 3.4))
+	_cyl(self, "VIPBucket", Vector3(34.4, 1.65, 4.3), 0.22, 0.3, QBOMaterials.gold(), false, 18)
+	_cyl(self, "VIPBottle", Vector3(34.4, 1.95, 4.3), 0.07, 0.4, QBOMaterials.glass(Color(0.6, 0.5, 0.1, 0.4)), false, 10)
+	_label(self, "VIP", Vector3(31.0, 2.4, 5.0), 60, Color(1.0, 0.82, 0.5), -PI * 0.5)
+	_chandelier(Vector3(35.0, 4.4, 4.6), Color(1.0, 0.78, 0.42), 0.7)
+	_add_omni("VIPChandelier", Vector3(35.0, 4.2, 4.6), Color(1.0, 0.72, 0.42), 3.2, 11.0)
+	_led_strip(Vector3(38.6, 0.5, 5), Vector3(0.06, 0.85, 12.6), Color(0.9, 0.5, 1.0))
+	_add_interactable("vip_sofa", "Ngồi khu VIP", "seat", Vector3(36.0, 0.9, 1.6), {"seat": Vector3(35.9, 0.95, 1.6), "yaw": -PI * 0.5}, Vector3(1.6, 2.0, 3.4))
 
 
 func _build_lounge_seating() -> void:
@@ -1000,18 +1016,18 @@ func _build_lounge_seating() -> void:
 
 func _build_balcony() -> void:
 	var gold := QBOMaterials.gold()
-	_box(self, "BalconyFloor", Vector3(0, BALCONY_Y, 14.0), Vector3(44, 0.35, 4.0), QBOMaterials.marble_dark())
-	_box(self, "BalconyUnderGlow", Vector3(0, BALCONY_Y - 0.22, 14.0), Vector3(43.6, 0.05, 3.6), QBOMaterials.matte_black(), false)
-	_led_strip(Vector3(0, BALCONY_Y - 0.28, 12.05), Vector3(43, 0.08, 0.08), Color(0.35, 0.8, 1.0))
+	_box(self, "BalconyFloor", Vector3(0, BALCONY_Y, 14.0), Vector3(56, 0.35, 4.0), QBOMaterials.marble_dark())
+	_box(self, "BalconyUnderGlow", Vector3(0, BALCONY_Y - 0.22, 14.0), Vector3(55.6, 0.05, 3.6), QBOMaterials.matte_black(), false)
+	_led_strip(Vector3(0, BALCONY_Y - 0.28, 12.05), Vector3(55, 0.08, 0.08), Color(0.35, 0.8, 1.0))
 	# Lan can kính.
-	for i in range(12):
-		var x := -21.0 + i * 3.8
+	for i in range(15):
+		var x := -26.6 + i * 3.8
 		_box(self, "BalconyGlass_%d" % i, Vector3(x, BALCONY_Y + 0.65, 12.05), Vector3(3.5, 1.2, 0.05), QBOMaterials.glass(Color(0.7, 0.85, 1.0, 0.13)), false)
 		_cyl(self, "BalconyPost_%d" % i, Vector3(x - 1.85, BALCONY_Y + 0.65, 12.05), 0.04, 1.35, gold, false, 8)
-	_box(self, "BalconyHandrail", Vector3(0, BALCONY_Y + 1.32, 12.05), Vector3(43.5, 0.09, 0.12), gold, false)
+	_box(self, "BalconyHandrail", Vector3(0, BALCONY_Y + 1.32, 12.05), Vector3(55.5, 0.09, 0.12), gold, false)
 	# Bàn ghế trên ban công.
-	for i in range(3):
-		var x := -12.0 + i * 12.0
+	for i in range(4):
+		var x := -18.0 + i * 12.0
 		_table(Vector3(x, BALCONY_Y, 14.0), 0.9)
 		_chair(Vector3(x - 1.4, BALCONY_Y, 14.0), PI * 0.5)
 		_chair(Vector3(x + 1.4, BALCONY_Y, 14.0), -PI * 0.5)
@@ -1027,34 +1043,34 @@ func _build_corridor_and_backrooms() -> void:
 	var gold := QBOMaterials.gold()
 
 	# Hành lang sau sân khấu, nối hai bên.
-	_box(self, "CorridorWall", Vector3(0, 2, -12), Vector3(64, 4, 0.4), wall)
+	_box(self, "CorridorWall", Vector3(0, 2, -12), Vector3(80, 4, 0.4), wall)
 	# Cửa phục vụ xuyên qua vách sân khấu (hai bên màn LED).
 	for side in [-1, 1]:
 		_door("stage_service_%d" % side, Vector3(side * 21, 0, -6.0), 0.0, 2.0, 2.8)
 	# Vách ngăn các phòng sau.
-	for x in [-20.0, -2.0, 16.0]:
+	for x in [-26.0, -2.0, 21.0]:
 		_box(self, "BackPartition_%d" % int(x), Vector3(x, 2.2, -19), Vector3(0.4, 4.4, 14), wall)
 	# Trần hành lang thấp + đèn.
 	for i in range(8):
-		_add_omni("CorridorLight_%d" % i, Vector3(-28 + i * 8, 3.6, -9), Color(0.9, 0.75, 0.6), 1.6, 8.0)
+		_add_omni("CorridorLight_%d" % i, Vector3(-36 + i * 10.3, 3.6, -9), Color(0.9, 0.75, 0.6), 1.6, 8.0)
 
 	# Phòng điều khiển ánh sáng.
-	_box(self, "ControlDesk", Vector3(-26, 0.55, -14.2), Vector3(6, 1.1, 1.4), QBOMaterials.matte_black())
-	_box(self, "ControlTop", Vector3(-26, 1.14, -14.2), Vector3(6.4, 0.1, 1.7), marble)
+	_box(self, "ControlDesk", Vector3(-34, 0.55, -14.2), Vector3(6, 1.1, 1.4), QBOMaterials.matte_black())
+	_box(self, "ControlTop", Vector3(-34, 1.14, -14.2), Vector3(6.4, 0.1, 1.7), marble)
 	for i in range(8):
-		_cyl(self, "Fader_%d" % i, Vector3(-28.2 + i * 0.62, 1.24, -14.4), 0.03, 0.1, gold, false, 8)
+		_cyl(self, "Fader_%d" % i, Vector3(-36.2 + i * 0.62, 1.24, -14.4), 0.03, 0.1, gold, false, 8)
 	for side in [-1, 1]:
-		_box(self, "ControlMonitor_%d" % side, Vector3(-26 + side * 1.5, 1.8, -14.4), Vector3(2.0, 1.2, 0.1), QBOMaterials.screen(), false)
-		_led_strip(Vector3(-26 + side * 1.5, 1.85, -14.33), Vector3(1.7, 0.02, 0.02), Color(0.35, 0.8, 1.0))
-	_box(self, "ControlWindow", Vector3(-26, 2.6, -12.15), Vector3(10, 2.0, 0.1), QBOMaterials.glass(), false)
-	_add_omni("ControlRoomLight", Vector3(-26, 3.4, -17), Color(0.55, 0.7, 1.0), 1.2, 9.0)
-	_label(self, "LIGHT CONTROL", Vector3(-26, 3.2, -12.1), 40, Color(0.6, 0.85, 1.0))
-	_add_interactable("lighting_console", "Bảng điều khiển ánh sáng", "lighting_mode", Vector3(-26, 1.4, -13.4), {}, Vector3(6, 1.8, 1.2))
-	_door("control_room_door", Vector3(-23.5, 0, -12.0), 0.0, 1.8, 2.6)
+		_box(self, "ControlMonitor_%d" % side, Vector3(-34 + side * 1.5, 1.8, -14.4), Vector3(2.0, 1.2, 0.1), QBOMaterials.screen(), false)
+		_led_strip(Vector3(-34 + side * 1.5, 1.85, -14.33), Vector3(1.7, 0.02, 0.02), Color(0.35, 0.8, 1.0))
+	_box(self, "ControlWindow", Vector3(-34, 2.6, -12.15), Vector3(10, 2.0, 0.1), QBOMaterials.glass(), false)
+	_add_omni("ControlRoomLight", Vector3(-34, 3.4, -17), Color(0.55, 0.7, 1.0), 1.2, 9.0)
+	_label(self, "LIGHT CONTROL", Vector3(-34, 3.2, -12.1), 40, Color(0.6, 0.85, 1.0))
+	_add_interactable("lighting_console", "Bảng điều khiển ánh sáng", "lighting_mode", Vector3(-34, 1.4, -13.4), {}, Vector3(6, 1.8, 1.2))
+	_door("control_room_door", Vector3(-31.5, 0, -12.0), 0.0, 1.8, 2.6)
 
 	# Nhà vệ sinh (2 buồng).
 	for room_index in range(2):
-		var cx := -15.0 if room_index == 0 else -6.0
+		var cx := -19.0 if room_index == 0 else -7.0
 		_box(self, "WCBack_%d" % room_index, Vector3(cx, 1.5, -25.8), Vector3(7.6, 3, 0.15), QBOMaterials.marble_light(), false)
 		for k in range(3):
 			_box(self, "WCStall_%d_%d" % [room_index, k], Vector3(cx - 3.0 + k * 2.4, 1.2, -24.6), Vector3(0.08, 2.4, 2.2), QBOMaterials.glass(Color(0.75, 0.85, 0.95, 0.25)), false)
@@ -1065,20 +1081,20 @@ func _build_corridor_and_backrooms() -> void:
 		_door("wc_door_%d" % room_index, Vector3(cx + 2.6, 0, -12.0), 0.0, 1.4, 2.4)
 
 	# Phòng VIP riêng.
-	_sofa(Vector3(10.5, 0, -17.5), 0.0, QBOMaterials.leather(Color(0.2, 0.03, 0.08)), 3.6)
-	_table(Vector3(9.0, 0, -19.0), 1.1)
-	_box(self, "PrivateTVFrame", Vector3(8.0, 2.2, -25.7), Vector3(4.6, 2.7, 0.2), QBOMaterials.matte_black(), false)
-	_box(self, "PrivateTV", Vector3(8.0, 2.2, -25.55), Vector3(4.2, 2.3, 0.08), QBOMaterials.screen(), false)
-	_add_omni("PrivateVIPLight", Vector3(9.0, 3.4, -18.5), Color(1.0, 0.55, 0.6), 2.4, 10.0)
-	_chandelier(Vector3(9.0, 3.4, -18.5), Color(1.0, 0.65, 0.4), 0.45)
-	_label(self, "VIP ROOM", Vector3(9.0, 3.2, -25.4), 52, Color(1.0, 0.8, 0.5))
-	_door("vip_room_door", Vector3(12.5, 0, -12.0), 0.0, 1.8, 2.6)
+	_sofa(Vector3(13.5, 0, -17.5), 0.0, QBOMaterials.leather(Color(0.2, 0.03, 0.08)), 3.6)
+	_table(Vector3(12.0, 0, -19.0), 1.1)
+	_box(self, "PrivateTVFrame", Vector3(11.0, 2.2, -25.7), Vector3(4.6, 2.7, 0.2), QBOMaterials.matte_black(), false)
+	_box(self, "PrivateTV", Vector3(11.0, 2.2, -25.55), Vector3(4.2, 2.3, 0.08), QBOMaterials.screen(), false)
+	_add_omni("PrivateVIPLight", Vector3(12.0, 3.4, -18.5), Color(1.0, 0.55, 0.6), 2.4, 10.0)
+	_chandelier(Vector3(12.0, 3.4, -18.5), Color(1.0, 0.65, 0.4), 0.45)
+	_label(self, "VIP ROOM", Vector3(12.0, 3.2, -25.4), 52, Color(1.0, 0.8, 0.5))
+	_door("vip_room_door", Vector3(16.0, 0, -12.0), 0.0, 1.8, 2.6)
 
 	# Kho.
 	for i in range(6):
-		_box(self, "Crate_%d" % i, Vector3(22 + (i % 3) * 2.6, 0.5 + (i / 3) * 0.9, -20 - (i % 2) * 2.0), Vector3(1.6, 1.0, 1.6), QBOMaterials.wood_dark())
-	_add_omni("StorageLight", Vector3(25, 3.4, -20), Color(0.8, 0.8, 0.85), 0.7, 8.0)
-	_door("storage_door", Vector3(25.0, 0, -12.0), 0.0, 1.8, 2.6)
+		_box(self, "Crate_%d" % i, Vector3(28 + (i % 3) * 2.6, 0.5 + (i / 3) * 0.9, -20 - (i % 2) * 2.0), Vector3(1.6, 1.0, 1.6), QBOMaterials.wood_dark())
+	_add_omni("StorageLight", Vector3(31, 3.4, -20), Color(0.8, 0.8, 0.85), 0.7, 8.0)
+	_door("storage_door", Vector3(31.0, 0, -12.0), 0.0, 1.8, 2.6)
 
 
 func _door(id: String, position: Vector3, rot_y: float, width: float, height: float) -> void:
@@ -1174,14 +1190,14 @@ func _plant(position: Vector3) -> void:
 func _build_decor() -> void:
 	for p in [
 		Vector3(-13, 0, 22), Vector3(13, 0, 22), Vector3(-30, 0, 13), Vector3(30, 0, 13),
-		Vector3(-21, 0, 14.5), Vector3(21, 0, 14.5), Vector3(-12, 0, -9), Vector3(12, 0, -9),
+		Vector3(-21, 0, 14.5), Vector3(26, 0, 14.5), Vector3(-12, 0, -9), Vector3(12, 0, -9),
 	]:
 		_plant(p)
-	# Tác phẩm nghệ thuật tường.
-	_box(self, "ArtWall1", Vector3(-31.95, 5.0, -3.0), Vector3(0.1, 4.0, 6.0), QBOMaterials.matte_black(), false)
-	_led_strip(Vector3(-31.85, 5.0, -3.0), Vector3(0.04, 3.4, 0.05), Color(1.0, 0.4, 0.6))
-	_box(self, "ArtWall2", Vector3(31.95, 5.0, -1.5), Vector3(0.1, 3.2, 5.0), QBOMaterials.matte_black(), false)
-	_led_strip(Vector3(31.85, 5.0, -1.5), Vector3(0.04, 2.6, 0.05), Color(0.4, 0.6, 1.0))
+	# Tác phẩm nghệ thuật trên tường (bám sát tường ngoài sau khi mở rộng).
+	_box(self, "ArtWall1", Vector3(-39.85, 5.0, -3.0), Vector3(0.1, 4.0, 6.0), QBOMaterials.matte_black(), false)
+	_led_strip(Vector3(-39.75, 5.0, -3.0), Vector3(0.04, 3.4, 0.05), Color(1.0, 0.4, 0.6))
+	_box(self, "ArtWall2", Vector3(39.85, 5.0, -1.5), Vector3(0.1, 3.2, 5.0), QBOMaterials.matte_black(), false)
+	_led_strip(Vector3(39.75, 5.0, -1.5), Vector3(0.04, 2.6, 0.05), Color(0.4, 0.6, 1.0))
 	# Bảng hiệu ngoài trời (phía trên cửa vào).
 	_label(self, "QUẨY BAR ONLINE", Vector3(0, 9.4, 26.62), 110, Color(1.0, 0.15, 0.45), PI)
 	_label(self, "THE CHROME LOTUS • NIGHTCLUB", Vector3(0, 8.6, 26.6), 34, Color(1.0, 0.75, 0.45), PI)

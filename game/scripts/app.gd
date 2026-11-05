@@ -656,12 +656,13 @@ func _run_screenshots() -> void:
 	var dev_err: int = dev_image.save_png(dir.path_join("tv_dev.png"))
 	print("[SHOT] tv_dev -> %s (%s) size=%s" % [dev_err, error_string(dev_err), dev_image.get_size()])
 	var shots := [
-		{"name": "01_entrance", "eye": Vector3(0.0, 1.75, 24.5), "yaw": 0.0, "pitch": -0.02},
-		{"name": "02_dancefloor", "eye": Vector3(0.0, 1.8, 13.5), "yaw": 0.0, "pitch": 0.02},
-		{"name": "03_stage", "eye": Vector3(0.0, 2.2, 13.0), "yaw": 0.0, "pitch": 0.03},
-		{"name": "04_bar", "eye": Vector3(-22.0, 1.7, 5.0), "yaw": PI * 0.5, "pitch": 0.02},
-		{"name": "05_vip", "eye": Vector3(21.8, 1.85, 5.0), "yaw": -PI * 0.5, "pitch": 0.06},
+		{"name": "01_entrance", "eye": Vector3(0.0, 1.75, 24.5), "yaw": 0.0, "pitch": 0.05},
+		{"name": "02_dancefloor", "eye": Vector3(0.0, 1.8, 14.0), "yaw": 0.0, "pitch": 0.24},
+		{"name": "03_stage", "eye": Vector3(0.0, 2.2, 12.5), "yaw": 0.0, "pitch": 0.28},
+		{"name": "04_bar", "eye": Vector3(-29.5, 1.75, 5.0), "yaw": PI * 0.5, "pitch": 0.02},
+		{"name": "05_vip", "eye": Vector3(28.0, 1.85, 5.0), "yaw": -PI * 0.5, "pitch": 0.06},
 		{"name": "06_balcony", "eye": Vector3(7.0, 6.9, 13.4), "yaw": 0.0, "pitch": -0.18},
+		{"name": "07_light_rig", "eye": Vector3(9.0, 2.8, 11.0), "yaw": 1.1, "pitch": 0.52},
 	]
 	for shot in shots:
 		review_cam.global_position = shot["eye"]

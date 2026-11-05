@@ -14,8 +14,8 @@ void fragment() {
 	float h = hash21(cell);
 	vec3 mirror = mix(vec3(0.82, 0.86, 1.0), vec3(1.0), step(0.6, h));
 	vec3 glow = mix(tint.rgb, vec3(1.0), step(0.8, h));
-	ALBEDO = mirror * 0.5;
-	METALLIC = 0.85;
-	ROUGHNESS = 0.12 + h * 0.12;
-	EMISSION = glow * (0.35 + 0.55 * step(0.6, h));
+	ALBEDO = mirror * 0.62;
+	METALLIC = 0.9;
+	ROUGHNESS = 0.1 + h * 0.14;
+	EMISSION = glow * (0.16 + 0.4 * step(0.62, h));
 }

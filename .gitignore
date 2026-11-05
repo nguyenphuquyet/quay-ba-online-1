@@ -7,6 +7,8 @@ game/export/*.zip
 game/export/builds/
 game/build/
 *.translation
+# Tệp tạm Godot tạo khi nạp lại GDExtension (bản build thật đã được track)
+game/addons/native_video/~*
 
 # Android build template (sinh bởi --install-android-build-template)
 game/android/build/
