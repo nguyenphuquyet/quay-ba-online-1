@@ -87,6 +87,7 @@ var beat_enabled := true
 
 var _groups := {"moving_head": [], "wash": [], "ceiling": [], "accent": []}
 var _leds: Array = []
+var _lasers: Array = []
 var _time := 0.0
 var _beat_energy := 0.0
 var _strobe_phase := 0.0
@@ -136,6 +137,28 @@ func register_led(mesh: MeshInstance3D, color: Color) -> void:
 		mat = mat.duplicate()
 		mesh.material_override = mat
 	_leds.append({"mesh": mesh, "mat": mat, "base": color, "phase": randf() * TAU})
+
+
+## Đăng ký một cụm laser sân khấu. `beams` là các cặp {mesh, mat} dùng
+## ShaderMaterial laser_beam.gdshader; `spot` là đèn hắt sàn đi kèm.
+func register_laser(pivot: Node3D, beams: Array, spot: Light3D = null, base_yaw := 0.0, dots: Array = []) -> void:
+	var phase := randf() * TAU
+	pivot.set_meta("phase", phase)
+	_lasers.append({
+		"pivot": pivot,
+		"beams": beams,
+		"spot": spot,
+		"phase": phase,
+		"base_yaw": base_yaw,
+		"dots": dots,
+	})
+	if spot != null:
+		spot.set_meta("base_energy", spot.light_energy)
+		spot.set_meta("base_color", spot.light_color)
+
+
+func laser_count() -> int:
+	return _lasers.size()
 
 
 func apply_preset(preset: String, intensity_value := 1.0, speed_value := 1.0) -> void:
@@ -204,6 +227,67 @@ func _process(delta: float) -> void:
 				node.rotation.y = sin(_time * 0.9 + phase) * 1.1
 				node.rotation.z = sin(_time * 0.6 + phase * 1.7) * 0.35
 			index += 1
+
+	# Laser sân khấu: quét qua lại, đổi màu theo preset và nhấp theo beat.
+	var active := _target_energy > 0.001
+	var laser_index := 0
+	for entry in _lasers:
+		var pivot: Node3D = entry["pivot"]
+		if not is_instance_valid(pivot):
+			continue
+		var phase := float(entry["phase"])
+		# Quả cầu xoay đều để chùm tia và vòng đốm màu quét quanh sàn.
+		pivot.rotation.y = float(entry["base_yaw"]) + _time * 0.3 + phase
+		pivot.rotation.x = 0.0
+		var beams: Array = entry["beams"]
+		for k in beams.size():
+			var beam: Dictionary = beams[k]
+			var mat: ShaderMaterial = beam["mat"]
+			if mat == null:
+				continue
+			var color: Color = _target_colors[(laser_index + k) % _target_colors.size()]
+			var current: Color = mat.get_shader_parameter("beam_color")
+			mat.set_shader_parameter("beam_color", current.lerp(color, 0.10))
+			var target_intensity := (0.45 + _beat_energy * 0.6) if active else 0.0
+			# Preset có strobe: nháy tia theo pha để giống laser club.
+			if active and bool(data.get("strobe", false)) and _beat_energy > 0.4 and sin(_strobe_phase) < 0.0:
+				target_intensity *= 0.2
+			var current_intensity := float(mat.get_shader_parameter("intensity"))
+			mat.set_shader_parameter("intensity", lerpf(current_intensity, target_intensity, 0.18))
+			(beam["mesh"] as MeshInstance3D).visible = active
+			# Vệt sáng trên sàn bám theo đầu tia khi cụm laser quét.
+			var pool: MeshInstance3D = beam.get("pool")
+			if pool != null and is_instance_valid(pool):
+				pool.visible = active
+				if active:
+					var aim: Vector3 = beam.get("aim", Vector3.DOWN)
+					var dir := (pivot.global_transform.basis * aim).normalized()
+					var origin := pivot.global_position
+					var down := maxf(0.05, -dir.y)
+					var hit := origin + dir * ((origin.y - 0.06) / down)
+					if hit.z < 0.0:
+						hit = origin + dir * ((origin.y - 1.03) / down)
+					pool.global_position = Vector3(hit.x, hit.y + 0.04, hit.z)
+					var pool_mat: ShaderMaterial = beam.get("pool_mat")
+					if pool_mat != null:
+						var pool_color: Color = pool_mat.get_shader_parameter("glow_color")
+						pool_mat.set_shader_parameter("glow_color", pool_color.lerp(color, 0.10))
+						var pool_current := float(pool_mat.get_shader_parameter("intensity"))
+						var pool_base := float(beam.get("pool_base", 1.2))
+						pool_mat.set_shader_parameter("intensity", lerpf(pool_current, pool_base * (1.0 + _beat_energy * 0.7), 0.18))
+		var dots: Array = entry.get("dots", [])
+		for d in dots:
+			if is_instance_valid(d):
+				d.visible = active
+		var spot: Light3D = entry["spot"]
+		if spot != null and is_instance_valid(spot):
+			# Giữ vũng sáng sàn hơi trắng để các đốm màu vẫn nổi.
+			var spot_color: Color = _target_colors[laser_index % _target_colors.size()].lerp(Color(1, 1, 1), 0.55)
+			spot.light_color = spot.light_color.lerp(spot_color, 0.08)
+			var base_energy := float(spot.get_meta("base_energy", 1.0))
+			var spot_target := base_energy * (1.0 + _beat_energy * 0.4) if active else 0.0
+			spot.light_energy = lerpf(spot.light_energy, spot_target, 0.12)
+		laser_index += 1
 
 	# LED strips: đổi màu + nhấp theo beat.
 	var led_index := 0

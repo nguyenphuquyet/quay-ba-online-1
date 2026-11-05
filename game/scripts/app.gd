@@ -203,7 +203,7 @@ func _run_smoke_test() -> void:
 	if world == null:
 		failures.append("world không được tạo")
 	else:
-		print("[SMOKE] interactables=%d players=%d lights=%d" % [world.interactables.size(), world.players.size(), world.lighting._groups.get("moving_head", []).size()])
+		print("[SMOKE] interactables=%d players=%d lights=%d lasers=%d" % [world.interactables.size(), world.players.size(), world.lighting._groups.get("moving_head", []).size(), world.lighting.laser_count()])
 		if world.interactables.size() < 20:
 			failures.append("quá ít interactable (%d)" % world.interactables.size())
 		if world.players.size() != 1:
@@ -614,6 +614,9 @@ func _run_screenshots() -> void:
 		print("[SHOT] 00_main_menu -> %s (%s)" % [menu_path, error_string(menu_err)])
 	start_solo()
 	await get_tree().create_timer(0.6).timeout
+	# Ảnh QA chỉ cần cảnh 3D; ẩn UI để menu/HUD không phủ lên ảnh sân khấu.
+	if ui != null:
+		ui.visible = false
 	var player = local_player()
 	if player == null or world == null:
 		printerr("[SHOT] Không có world/player")

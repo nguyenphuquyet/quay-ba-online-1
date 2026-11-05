@@ -37,7 +37,7 @@ Phiên bản: 0.1.0 (nền tảng MVP)
 - [x] Tải + giải mã audio từ API, cache stream/cover; play/pause/next/prev/volume/seek; beat detection bằng spectrum analyzer; nhạc demo tổng hợp gốc khi API lỗi.
 - [x] Sửa lỗi treo “Đang tải…” khi vào phòng: state đồng bộ 6 giây (kể cả echo từ server) không còn huỷ lượt tải đang chạy; state được xếp hàng và áp lại đúng vị trí sau khi tải xong. Timeout tải bài 90 giây, thư viện tự thử lại 2 lần.
 - [x] Đồng bộ lúc chủ phòng tải bài: state `loading` báo máy khác tải trước nhưng **chờ**, không phát từ 0; tải xong nhảy đúng vị trí hiện tại (kể cả vào giữa bài), không lặp lại đoạn đầu.
-- [x] 8 preset ánh sáng + intensity/speed/beat sync, LED động, moving head, strobe, đồng bộ server.
+- [x] 8 preset ánh sáng + intensity/speed/beat sync, LED động, một quả cầu pha lê lớn giữa sàn nhảy chiếu tia trong suốt + đốm màu gần 360°, vũng sáng sàn rộng, strobe, đồng bộ server.
 - [x] TV state sync; TV lớn 20:9 phát màn nhạc DJ (bìa, tên bài, tiến trình, EQ) và video MP4/MOV/M4V/OGV trực tiếp; TV nhỏ hiển thị thông tin nhà phát triển. Vị trí video được gửi lại mỗi 6 giây; chênh lệch đồng hồ giữa hai máy >15 giây bị bỏ qua thay vì seek sai.
 - [x] Video MP4/H.264 dùng GDExtension `claytercek/godot-native-video` v0.4.0 (`native_video`), tải về cache rồi phát bằng `VideoStreamPlayer`; giữ tỉ lệ 16:9 trên màn 20:9.
 - [x] Máy tính trong bar: tab NHẠC/DJ (playlist API, transport, volume, cover) và tab TV SÂN KHẤU (dán link MP4 trực tiếp, play/pause, volume, trở về màn nhạc).

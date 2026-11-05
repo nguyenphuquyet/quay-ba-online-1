@@ -9,6 +9,12 @@ const MAIN_CEIL := 10.0
 const LOBBY_CEIL := 6.2
 const BACK_CEIL := 4.2
 const BALCONY_Y := 5.0
+const LASER_SHADER := preload("res://shaders/laser_beam.gdshader")
+const FLOOR_GLOW_SHADER := preload("res://shaders/floor_glow.gdshader")
+const CRYSTAL_BALL_SHADER := preload("res://shaders/crystal_ball.gdshader")
+## Mặt sàn nhảy (box cao 0.06) và mặt bục sân khấu (cao 1.0).
+const DANCE_FLOOR_Y := 0.06
+const STAGE_FLOOR_Y := 1.03
 
 ## TV chính giữa sân khấu (nhạc DJ/MP4, tỉ lệ 20:9) và TV nhỏ bên phải (thông tin nhà phát triển).
 const MAIN_TV_SIZE := Vector2(14.4, 6.48)
@@ -35,6 +41,7 @@ var lobby_emitters: Array = []
 var tv_screens: Array = []
 var _pending_lights: Array = []
 var _pending_leds: Array = []
+var _pending_lasers: Array = []
 ## Đèn động do sân khấu tạo ra; bật/tắt theo khoảng cách để giữ FPS.
 var _managed_lights: Array = []
 var _light_budget_check := 0.0
@@ -265,6 +272,236 @@ func _add_spot(node_name: String, position: Vector3, color: Color, energy: float
 	_register_light("moving_head" if shadow else "wash", pivot)
 	_managed_lights.append({"node": light, "shadow": shadow})
 	return light
+
+
+## Đèn "magic ball": quả cầu pha lê nhiều màu bắn ra chùm tia mảnh xuống sàn.
+## Mỗi tia là mesh nón additive và có một đốm sáng đúng điểm chạm sàn;
+## LightingController xoay cụm, đổi màu và nhấp theo beat.
+func _add_magic_ball(node_name: String, position: Vector3, palette: Array, base_yaw_deg := 0.0, beam_count := 12, az_spread_deg := 110.0, tilt_min_deg := 6.0, tilt_max_deg := 42.0, ball_radius := 0.33, beam_width := 0.1, dot_max_radius := 8.6, hang := false, dot_rings := 5, dot_per_ring := 12) -> void:
+	var pivot := Node3D.new()
+	pivot.name = node_name
+	pivot.position = position
+	pivot.rotation_degrees.y = base_yaw_deg
+	add_child(pivot)
+
+	var full_circle := az_spread_deg >= 359.0
+	var ball_color: Color = palette[0] if not palette.is_empty() else Color(1.0, 0.6, 0.8)
+
+	# Vỏ đèn + quả cầu pha lê. Bản treo giữa sàn có nắp và thanh treo lên trần.
+	if hang:
+		_cyl(pivot, node_name + "_Cap", Vector3(0, ball_radius + 0.16, 0), ball_radius * 0.72, 0.32, QBOMaterials.matte_black(), false, 20)
+		var top_local := MAIN_CEIL - position.y
+		var rod_h := maxf(0.15, top_local - ball_radius - 0.32)
+		_cyl(pivot, node_name + "_Rod", Vector3(0, ball_radius + 0.32 + rod_h * 0.5, 0), 0.045, rod_h, QBOMaterials.brushed_metal(), false, 8)
+	else:
+		_box(pivot, node_name + "_Bracket", Vector3(0, ball_radius * 0.9, -ball_radius * 0.9), Vector3(0.18, ball_radius * 1.8, 0.12), QBOMaterials.brushed_metal(), false)
+		for arm in [-1, 1]:
+			_box(pivot, node_name + "_Arm_%d" % arm, Vector3(arm * ball_radius * 1.1, ball_radius * 0.55, -ball_radius * 0.36), Vector3(0.06, ball_radius * 1.5, 0.1), QBOMaterials.brushed_metal(), false)
+		_cyl(pivot, node_name + "_Base", Vector3(0, ball_radius * 1.4, -0.04), ball_radius * 0.9, ball_radius * 1.2, QBOMaterials.matte_black(), false, 18)
+	_sphere(pivot, node_name + "_Ball", Vector3.ZERO, ball_radius, _crystal_material(ball_color))
+
+	var beam_entries: Array = []
+	var count := maxi(1, beam_count)
+	# Chia tia thành 3 vòng bán kính khác nhau cho giống chùm cầu pha lê.
+	var rings := 3
+	var per_ring := int(ceil(float(count) / float(rings)))
+	for i in count:
+		var ring := i % rings
+		var ring_index := int(floor(float(i) / float(rings)))
+		var yaw_deg := 0.0
+		if full_circle:
+			# Vòng tròn đủ 360 độ, so le nửa bước giữa các vòng.
+			yaw_deg = -az_spread_deg * 0.5 + az_spread_deg * float(ring_index) / float(per_ring)
+			yaw_deg += (az_spread_deg / float(per_ring)) * 0.5 * float(ring % 2)
+		else:
+			var ring_t := 0.5 if per_ring <= 1 else float(ring_index) / float(per_ring - 1)
+			yaw_deg = lerpf(-az_spread_deg * 0.5, az_spread_deg * 0.5, ring_t)
+		var yaw := deg_to_rad(yaw_deg)
+		var tilt_factor: float = [0.12, 0.52, 1.0][ring]
+		var tilt := deg_to_rad(lerpf(tilt_min_deg, tilt_max_deg, tilt_factor))
+		# Hướng tia trong không gian cục bộ của cụm đèn.
+		var aim := Vector3(sin(tilt) * sin(yaw), -cos(tilt), sin(tilt) * cos(yaw)).normalized()
+		var dir := (pivot.transform.basis * aim).normalized()
+		var down := maxf(0.05, -dir.y)
+		var landing := position + dir * ((position.y - DANCE_FLOOR_Y) / down)
+		var floor_y := STAGE_FLOOR_Y if landing.z < 0.0 else DANCE_FLOOR_Y
+		# Cộng thêm đoạn dư để tia chắc chắn cắm tới sàn kể cả khi cụm quét.
+		var beam_len := (position.y - floor_y) / down + 0.7
+		var color: Color = palette[i % palette.size()] if not palette.is_empty() else ball_color
+
+		var mi := MeshInstance3D.new()
+		mi.name = "%s_Beam_%d" % [node_name, i]
+		var cone := CylinderMesh.new()
+		# Đầu nhỏ ở nguồn (-Y), đầu lớn ở xa (+Y) để tạo hình tia.
+		cone.top_radius = beam_width
+		cone.bottom_radius = maxf(0.008, beam_width * 0.08)
+		cone.height = beam_len
+		cone.radial_segments = 6
+		cone.rings = 1
+		cone.cap_top = false
+		cone.cap_bottom = false
+		mi.mesh = cone
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var mat := ShaderMaterial.new()
+		mat.shader = LASER_SHADER
+		mat.set_shader_parameter("beam_color", color)
+		mat.set_shader_parameter("intensity", 0.9)
+		mat.set_shader_parameter("edge_softness", 2.2)
+		mat.set_shader_parameter("opacity", 0.28)
+		mi.material_override = mat
+		# Căn +Y của nón theo hướng tia; đầu nguồn nằm đúng tại quả cầu.
+		mi.position = aim * (beam_len * 0.5)
+		mi.quaternion = Quaternion(Vector3.UP, aim)
+		pivot.add_child(mi)
+
+		# Đốm sáng nhỏ trên sàn tại điểm tia chạm đất.
+		var pool := MeshInstance3D.new()
+		pool.name = "%s_Dot_%d" % [node_name, i]
+		var quad := PlaneMesh.new()
+		var dot_size := maxf(0.34, beam_width * 2.2)
+		quad.size = Vector2(dot_size, dot_size)
+		pool.mesh = quad
+		pool.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var pool_mat := ShaderMaterial.new()
+		pool_mat.shader = FLOOR_GLOW_SHADER
+		pool_mat.set_shader_parameter("glow_color", color)
+		pool_mat.set_shader_parameter("intensity", 1.3)
+		pool.material_override = pool_mat
+		var world_aim := (pivot.transform.basis * aim).normalized()
+		pool.position = _laser_floor_point(position, world_aim) + Vector3(0, 0.04, 0)
+		add_child(pool)
+
+		beam_entries.append({"mesh": mi, "mat": mat, "aim": aim, "pool": pool, "pool_mat": pool_mat, "pool_base": 1.3})
+
+	# Hoa văn đốm màu trên sàn kiểu đèn cầu pha lê.
+	var dot_nodes := _add_dot_field(pivot, position, palette, deg_to_rad(base_yaw_deg), dot_rings, dot_per_ring, maxf(1.0, ball_radius * 1.6), dot_max_radius, az_spread_deg)
+
+	# Vũng sáng rộng phủ gần 360 độ quanh đèn.
+	var wash := MeshInstance3D.new()
+	wash.name = node_name + "_Wash"
+	var wash_mesh := PlaneMesh.new()
+	wash_mesh.size = Vector2(dot_max_radius * 2.2, dot_max_radius * 2.2)
+	wash.mesh = wash_mesh
+	wash.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var wash_mat := ShaderMaterial.new()
+	wash_mat.shader = FLOOR_GLOW_SHADER
+	wash_mat.set_shader_parameter("glow_color", ball_color.lerp(Color(1, 1, 1), 0.6))
+	wash_mat.set_shader_parameter("intensity", 0.4)
+	wash.material_override = wash_mat
+	wash.position = Vector3(position.x, DANCE_FLOOR_Y + 0.02, position.z)
+	add_child(wash)
+	dot_nodes.append(wash)
+
+	# Đèn thật hắt màu xuống vùng sàn mà chùm tia chiếu tới.
+	var spot := SpotLight3D.new()
+	spot.name = node_name + "_FloorGlow"
+	spot.light_color = ball_color.lerp(Color(1, 1, 1), 0.55)
+	spot.light_energy = 4.0 if full_circle else 2.6
+	spot.spot_range = 26.0 if full_circle else 17.0
+	spot.spot_angle = 110.0 if full_circle else 58.0
+	spot.spot_attenuation = 0.6
+	spot.shadow_enabled = false
+	spot.distance_fade_enabled = true
+	spot.distance_fade_begin = 11.0
+	spot.distance_fade_length = 6.0
+	spot.rotation_degrees.x = -90.0 if full_circle else -(90.0 + (tilt_min_deg + tilt_max_deg) * 0.5)
+	pivot.add_child(spot)
+	_managed_lights.append({"node": spot, "shadow": false})
+
+	_register_laser(pivot, beam_entries, spot, deg_to_rad(base_yaw_deg), dot_nodes)
+
+
+## Material quả cầu pha lê: bề mặt khảm gương nhỏ, phát sáng như đèn disco ball.
+func _crystal_material(color: Color) -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = CRYSTAL_BALL_SHADER
+	mat.set_shader_parameter("tint", color)
+	return mat
+
+
+## Rải các đốm sáng nhỏ trên sàn theo từng vòng bán kính, giống hoa văn mà
+## quả cầu pha lê chiếu xuống. Dùng MultiMesh để gom thành ít draw call.
+func _add_dot_field(pivot: Node3D, origin: Vector3, palette: Array, base_yaw: float, ring_count := 5, per_ring := 12, min_radius := 1.4, max_radius := 9.0, arc_deg := 150.0) -> Array:
+	var colors: Array = palette if not palette.is_empty() else [Color(1.0, 0.6, 0.8)]
+	var total := ring_count * per_ring
+	var group_count := colors.size()
+	var per_group := int(ceil(float(total) / float(group_count)))
+	var nodes: Array = []
+	for g in group_count:
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.instance_count = per_group
+		var quad := PlaneMesh.new()
+		quad.size = Vector2(0.26, 0.26)
+		mm.mesh = quad
+		# Ẩn các instance dư (nếu tổng đốm không chia hết cho số màu).
+		for k in per_group:
+			mm.set_instance_transform(k, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
+		var mmi := MultiMeshInstance3D.new()
+		mmi.name = "%s_Dots_%d" % [pivot.name, g]
+		mmi.multimesh = mm
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mmi.position = Vector3(origin.x, 0.0, origin.z)
+		var mat := ShaderMaterial.new()
+		mat.shader = FLOOR_GLOW_SHADER
+		mat.set_shader_parameter("glow_color", colors[g])
+		mat.set_shader_parameter("intensity", 1.3)
+		mmi.material_override = mat
+		add_child(mmi)
+		nodes.append(mmi)
+
+	var next_index: Array = []
+	next_index.resize(group_count)
+	next_index.fill(0)
+	var slot := 0
+	for ring in ring_count:
+		var ring_t := 0.5 if ring_count <= 1 else float(ring) / float(ring_count - 1)
+		var radius := lerpf(min_radius, max_radius, ring_t)
+		for j in per_ring:
+			var angle_deg := 0.0
+			if arc_deg >= 359.0:
+				# Vòng tròn đủ 360 độ: chia đều, không lặp điểm đầu/cuối.
+				angle_deg = -arc_deg * 0.5 + arc_deg * float(j) / float(per_ring)
+				angle_deg += (arc_deg / float(per_ring)) * 0.5 * float(ring % 2)
+			else:
+				var at := 0.5 if per_ring <= 1 else float(j) / float(per_ring - 1)
+				angle_deg = lerpf(-arc_deg * 0.5, arc_deg * 0.5, at) + ring * 9.0
+			var angle := deg_to_rad(angle_deg) + base_yaw
+			var local := Vector3(radius * sin(angle), 0.0, radius * cos(angle))
+			var world_x := origin.x + local.x
+			var world_z := origin.z + local.z
+			var floor_y := STAGE_FLOOR_Y
+			if world_z >= 0.0:
+				var on_dance := absf(world_x) <= 14.0 and world_z >= 0.8 and world_z <= 12.2
+				floor_y = DANCE_FLOOR_Y if on_dance else 0.0
+			# Nâng lên 0.045 để đốm không bị chìm/ z-fighting với mặt sàn.
+			local.y = floor_y + 0.045
+			var g := slot % group_count
+			var idx: int = next_index[g]
+			var mm: MultiMesh = nodes[g].multimesh
+			if idx < mm.instance_count:
+				mm.set_instance_transform(idx, Transform3D(Basis(), local))
+				next_index[g] = idx + 1
+			slot += 1
+	return nodes
+
+
+## Điểm tia chạm sàn: sàn nhảy y=0.06, hoặc mặt bục sân khấu y=1.03 nếu rơi trên bục.
+func _laser_floor_point(origin: Vector3, aim: Vector3) -> Vector3:
+	var down := maxf(0.05, -aim.y)
+	var t := (origin.y - DANCE_FLOOR_Y) / down
+	var point := origin + aim * t
+	if point.z < 0.0:
+		t = (origin.y - STAGE_FLOOR_Y) / down
+		point = origin + aim * t
+	return point
+
+
+func _register_laser(pivot: Node3D, beams: Array, spot: Light3D, base_yaw: float, dots: Array = []) -> void:
+	if lighting != null and lighting.has_method("register_laser"):
+		lighting.register_laser(pivot, beams, spot, base_yaw, dots)
+	else:
+		_pending_lasers.append({"pivot": pivot, "beams": beams, "spot": spot, "base_yaw": base_yaw, "dots": dots})
 
 
 func _add_omni(node_name: String, position: Vector3, color: Color, energy: float, range_m := 9.0, shadow := false) -> OmniLight3D:
@@ -657,15 +894,10 @@ func _build_stage() -> void:
 		_box(self, "TrussPost_%d" % side, Vector3(side * 12.4, 5.5, -1.1), Vector3(0.18, 9.0, 0.18), QBOMaterials.brushed_metal())
 	_box(self, "TrussBeam", Vector3(0, 9.85, -1.1), Vector3(25.0, 0.18, 0.18), QBOMaterials.brushed_metal())
 	_box(self, "TrussBeam2", Vector3(0, 9.15, -1.1), Vector3(25.0, 0.14, 0.14), QBOMaterials.brushed_metal())
-	for i in range(6):
-		var x := -10.0 + i * 4.0
-		_box(self, "MovingHeadBase_%d" % i, Vector3(x, 9.42, -1.1), Vector3(0.34, 0.46, 0.34), QBOMaterials.matte_black())
-		_add_spot("MovingHead_%d" % i, Vector3(x, 9.1, -1.1), Color(1.0, 0.5, 0.75), 4.0, 24.0, 24.0, i % 2 == 0)
-	# Laser gắn sát cột hai bên.
-	for side in [-1, 1]:
-		_box(self, "LaserUnit_%d" % side, Vector3(side * 10.6, 8.4, -5.2), Vector3(0.4, 0.3, 0.4), QBOMaterials.matte_black())
-		var beam := _led_strip(Vector3(side * 10.6, 8.4, -6.6), Vector3(0.04, 0.04, 3.0), Color(0.3, 1.0, 0.55))
-		beam.rotation_degrees.x = 18.0
+	# Một quả cầu pha lê lớn treo giữa sàn nhảy, chiếu tia và đốm màu xuống
+	# quanh nó (không gắn đèn dọc sân khấu).
+	var ball_palette := [Color(1.0, 0.25, 0.65), Color(0.25, 0.85, 1.0), Color(0.75, 0.35, 1.0), Color(1.0, 0.95, 0.7), Color(0.3, 1.0, 0.55)]
+	_add_magic_ball("CenterMagicBall", Vector3(0.0, 7.8, 6.5), ball_palette, 0.0, 18, 360.0, 4.0, 50.0, 0.85, 0.09, 9.5, true, 7, 20)
 
 	# Trống/percussion trang trí bên phải sân khấu.
 	_cyl(self, "Drum1", Vector3(10.4, 1.65, -4.4), 0.45, 0.7, QBOMaterials.brushed_metal(), false, 24)
@@ -976,8 +1208,11 @@ func _init_systems() -> void:
 		lighting.register_light(str(entry["kind"]), entry["node"])
 	for entry in _pending_leds:
 		lighting.register_led(entry["node"], entry["color"])
+	for entry in _pending_lasers:
+		lighting.register_laser(entry["pivot"], entry["beams"], entry["spot"], entry["base_yaw"], entry.get("dots", []))
 	_pending_lights.clear()
 	_pending_leds.clear()
+	_pending_lasers.clear()
 	if is_inside_tree():
 		lighting.apply_preset(str(room_info.get("lightingPreset", "party")), 1.0, 1.0)
 
